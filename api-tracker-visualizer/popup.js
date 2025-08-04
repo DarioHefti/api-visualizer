@@ -24,11 +24,11 @@ document.addEventListener('DOMContentLoaded', function() {
       const origin = tabs.length ? new URL(tabs[0].url || '').origin : null;
       chrome.storage.local.get([
         'siteConfigs', 'chatUrl', 'chatModel', 'apiKey', 
-        'recordingLog', 'recordingActive', 'schemas'
+        'recordingLog', 'recordingActive'
       ], (data) => {
         const { 
           siteConfigs = {}, chatUrl, chatModel, apiKey, 
-          recordingLog = [], recordingActive: recAct, schemas = []
+          recordingLog = [], recordingActive: recAct
         } = data;
         
         // Load AI settings
@@ -363,10 +363,10 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
 
   // Schema tracking functionality
   function loadSchemas() {
-    chrome.storage.local.get(['schemas'], function(data) {
-      const schemas = data.schemas || [];
-      displayStats(schemas);
-      displaySchemas(schemas);
+    chrome.storage.local.get(['recordingLog'], function(data) {
+      const entries = data.recordingLog || [];
+      displayStats(entries);
+      displaySchemas(entries);
     });
   }
 
@@ -413,7 +413,7 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         const timestamp = latest.timestamp ? new Date(latest.timestamp).toLocaleString() : 'Unknown';
         
         // Get schema summary
-        const schema = latest.schema;
+        const schema = latest.response;
         let schemaInfo = '';
         if (schema && typeof schema === 'object') {
           if (schema.type === 'object' && schema.properties) {
@@ -447,7 +447,7 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
   // Clear all data
   clearBtn.addEventListener('click', function() {
     if (confirm('Are you sure you want to clear all stored data (schemas and recordings)?')) {
-      chrome.storage.local.remove(['schemas', 'recordingLog'], function() {
+      chrome.storage.local.remove(['recordingLog'], function() {
         loadSchemas();
         renderLog([]);
         generateBtn.disabled = true;
@@ -464,19 +464,19 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
       if (changes.recordingLog) {
-        renderLog(changes.recordingLog.newValue || []);
-        const hasData = (changes.recordingLog.newValue || []).length > 0;
+        const entries = changes.recordingLog.newValue || [];
+        renderLog(entries);
+        const hasData = entries.length > 0;
         generateBtn.disabled = !hasData;
+        displayStats(entries);
+        displaySchemas(entries);
       }
       if (changes.recordingActive) {
         recordingActive = changes.recordingActive.newValue;
         recordBtn.disabled = recordingActive;
         stopBtn.disabled = !recordingActive;
       }
-      if (changes.schemas) {
-        displayStats(changes.schemas.newValue || []);
-        displaySchemas(changes.schemas.newValue || []);
-      }
+
     }
   });
 

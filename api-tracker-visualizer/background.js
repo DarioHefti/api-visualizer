@@ -338,28 +338,14 @@ function logEntry(type, info) {
 }
 
 function addSchemaEntry(url, schema) {
-  const entry = {
-    url,
-    schema,
-    timestamp: new Date().toISOString(),
-    id: Date.now() + Math.random().toString(36).substr(2, 9)
-  };
-  
-  chrome.storage.local.get({ schemas: [] }, (data) => {
-    const schemas = data.schemas || [];
-    schemas.push(entry);
-    
-    // Keep only last 100 entries to prevent storage bloat
-    const trimmed = schemas.slice(-100);
-    
-    chrome.storage.local.set({ schemas: trimmed }, () => {
-      console.log(`📝 Schema stored for ${url}:`, {
-        totalSchemas: trimmed.length,
-        schemaType: schema.type,
-        fullSchema: schema
-      });
-    });
-  });
+  // Store schema directly on the recording log instead of a separate collection
+  const matchIdx = recordingLog.findIndex(e => e.url === url && e.method === 'GET');
+  if (matchIdx !== -1) {
+    recordingLog[matchIdx].response = schema;
+  } else {
+    recordingLog.push({ url, method: 'GET', response: schema, timestamp: new Date().toISOString() });
+  }
+  persistLog();
 }
 
 // ===== MESSAGE HANDLERS =====
