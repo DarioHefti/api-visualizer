@@ -231,6 +231,38 @@ function jsonToSchema(json) {
 
 // ===== END EMBEDDED SCHEMA GENERATOR LIBRARY =====
 
+// ===== Simplified JSON Schema Generator =====
+function _getType(val) {
+  if (val === null) return 'null';
+  if (Array.isArray(val)) return 'array';
+  return typeof val; // 'string', 'number', 'boolean', 'object', 'undefined'
+}
+
+function jsonToSchema(data) {
+  const t = _getType(data);
+  if (t === 'object') {
+    const properties = {};
+    for (const key in data) {
+      properties[key] = jsonToSchema(data[key]);
+    }
+    return { type: 'object', properties };
+  }
+  if (t === 'array') {
+    if (data.length === 0) {
+      return { type: 'array', items: {} };
+    }
+    const first = data[0];
+    const itemType = _getType(first);
+    if (itemType === 'object') {
+      return { type: 'array', items: jsonToSchema(first) };
+    }
+    return { type: 'array', items: { type: itemType } };
+  }
+  // primitives: string, number, boolean, null, undefined
+  return { type: t };
+}
+// ===== End Simplified JSON Schema Generator =====
+
 // ===== RECORDING FUNCTIONALITY (from good-vizualization) =====
 let isRecording = false;
 let recordingOrigin = '';
