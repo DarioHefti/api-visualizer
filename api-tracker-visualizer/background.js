@@ -270,6 +270,27 @@ let recordingLog = [];
 let debuggerTabId = null;
 let pendingRequests = new Map();
 
+// ===== Common filter helper =====
+function shouldTrack(details, { requireResponse = false, requireJsonHeader = false } = {}) {
+  if (!isRecording) return false;
+  if (details.method !== 'GET') return false;
+  if (details.url.startsWith('chrome-extension://')) return false;
+  // Skip typical static asset extensions
+  if (/\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)(?:\?|$)/i.test(details.url)) return false;
+  if (details.initiator && details.initiator.startsWith('chrome-extension://')) return false;
+
+  if (requireResponse) {
+    if (details.statusCode !== 200) return false;
+    if (requireJsonHeader) {
+      const ctHeader = (details.responseHeaders || []).find(h => h.name.toLowerCase() === 'content-type');
+      if (!ctHeader) return false;
+      if (!/^application\/json\b/i.test(ctHeader.value)) return false;
+    }
+  }
+  return true;
+}
+
+
 // Helper to persist the log
 function persistLog() {
   console.log(recordingLog);
@@ -477,11 +498,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     console.log(`[Recorder] -> ${details.method} ${details.url}`);
-    if (!isRecording) return;
-    if (details.method !== 'GET') return;
-    if (details.url.startsWith('chrome-extension://')) return;
-    if (!/\/api\//i.test(details.url)) return;
-    if (details.initiator && details.initiator.startsWith('chrome-extension://')) return;
+    if (!shouldTrack(details)) return;
 
     const entry = { url: details.url, method: details.method, response: '(pending...)' };
     recordingLog.push(entry);
@@ -495,12 +512,8 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log(`[Recorder] <- ${details.statusCode} ${details.url}`);
-    if (!isRecording) return;
-    if (details.method !== 'GET') return;
-    if (details.url.startsWith('chrome-extension://')) return;
-    if (!/\/api\//i.test(details.url)) return;
-    if (details.initiator && details.initiator.startsWith('chrome-extension://')) return;
-    if (details.statusCode !== 200) return;
+    if (!shouldTrack(details, { requireResponse: true, requireJsonHeader: true })) return;
+
     
     // Find pending entry and mark it as completed via webRequest
     const idx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET' && e.response === '(pending...)');
@@ -535,7 +548,7 @@ chrome.webRequest.onCompleted.addListener(
     }
   },
   { urls: ['<all_urls>'] },
-  []
+  ['responseHeaders']
 );
 
 // General network monitoring for schema generation
