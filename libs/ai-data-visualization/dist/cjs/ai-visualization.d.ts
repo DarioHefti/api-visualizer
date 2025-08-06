@@ -92,7 +92,8 @@ export declare class AIDataVisualization {
     private buildApiOverviewHtml;
     private loadHistory;
     private saveHistory;
-    private replaceHistory;
+    private addVersionToHistory;
+    private persistHistory;
     private renderHistoryList;
     private clearHistory;
     private removeHistory;

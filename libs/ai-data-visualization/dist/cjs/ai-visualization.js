@@ -438,9 +438,6 @@ class AIDataVisualization {
       .ai-data-viz__history-list li {
         cursor: pointer;
         padding: 4px 4px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
       }
       .ai-data-viz__history-summary {
         cursor: pointer;
@@ -448,9 +445,10 @@ class AIDataVisualization {
         padding-right: 18px; /* space for clear button */
       }
       .ai-data-viz__history-clear-btn {
+        background: none;
         border: none;
         color: inherit;
-        font-size: 14px;
+        font-size: 20px;
         cursor: pointer;
         padding: 0;
         line-height: 1;
@@ -527,35 +525,36 @@ class AIDataVisualization {
         clearBtn.addEventListener('click', () => this.clearVisualization());
         retryBtn.addEventListener('click', () => this.generateVisualization());
         toggleBtn.addEventListener('click', () => this.toggleInputSection());
-        // History click
+        // History click (handles publish / remove / select version)
         historyList.addEventListener('click', (e) => {
-            const publishBtn = e.target.closest('.ai-data-viz__history-publish-btn');
-            const removeBtn = e.target.closest('.ai-data-viz__history-remove-btn');
+            const target = e.target;
+            // Publish latest version
+            const publishBtn = target.closest('.ai-data-viz__history-publish-btn');
             if (publishBtn) {
                 e.stopPropagation();
-                const li = publishBtn.closest('li');
+                const li = publishBtn.closest('li[data-index]');
                 if (!li)
                     return;
                 const idx = parseInt(li.getAttribute('data-index') || '-1', 10);
                 if (idx >= 0 && idx < this.history.length) {
                     const item = this.history[idx];
+                    const latest = item.versions[item.versions.length - 1];
                     if (this.config.publishGeneratedDiagram) {
                         try {
-                            this.config.publishGeneratedDiagram(item.html, item.prompt);
+                            this.config.publishGeneratedDiagram(latest.html, item.prompt);
                         }
                         catch (err) {
                             console.error('publishGeneratedDiagram error', err);
                         }
                     }
-                    else {
-                        console.warn('publishGeneratedDiagram callback not provided');
-                    }
                 }
                 return;
             }
+            // Remove entire prompt history
+            const removeBtn = target.closest('.ai-data-viz__history-remove-btn');
             if (removeBtn) {
                 e.stopPropagation();
-                const li = removeBtn.closest('li');
+                const li = removeBtn.closest('li[data-index]');
                 if (!li)
                     return;
                 const idx = parseInt(li.getAttribute('data-index') || '-1', 10);
@@ -564,30 +563,56 @@ class AIDataVisualization {
                 }
                 return;
             }
-            const li = e.target.closest('li');
-            if (!li)
-                return;
-            const index = parseInt(li.getAttribute('data-index') || '-1', 10);
-            if (index >= 0 && index < this.history.length) {
-                const item = this.history[index];
-                // Set this history item as the active visualization context
-                this.activeHistoryIndex = index;
-                this.displayVisualization(item.html);
-                const textarea = this.container.querySelector('.ai-data-viz__textarea');
-                textarea.value = '';
-                // Update prompt summary UI
-                const promptSummary = this.container.querySelector('.ai-data-viz__prompt-summary');
-                const promptTextEl = this.container.querySelector('.ai-data-viz__prompt-text');
-                if (promptSummary && promptTextEl) {
-                    promptTextEl.textContent = item.prompt;
-                    promptSummary.style.display = 'block';
-                    promptSummary.open = false;
+            // Click on a specific version
+            const versionLi = target.closest('li[data-version]');
+            if (versionLi) {
+                const idx = parseInt(versionLi.getAttribute('data-index') || '-1', 10);
+                const vIdx = parseInt(versionLi.getAttribute('data-version') || '-1', 10);
+                if (idx >= 0 && idx < this.history.length && vIdx >= 0 && vIdx < this.history[idx].versions.length) {
+                    const item = this.history[idx];
+                    const version = item.versions[vIdx];
+                    this.activeHistoryIndex = idx;
+                    this.displayVisualization(version.html);
+                    this.lastGeneratedCode = version.html;
+                    // Prompt & context
+                    const textarea = this.container.querySelector('.ai-data-viz__textarea');
+                    textarea.value = '';
+                    const promptSummary = this.container.querySelector('.ai-data-viz__prompt-summary');
+                    const promptTextEl = this.container.querySelector('.ai-data-viz__prompt-text');
+                    if (promptSummary && promptTextEl) {
+                        promptTextEl.textContent = item.prompt;
+                        promptSummary.style.display = 'block';
+                        promptSummary.open = false;
+                    }
+                    this.originalPrompt = item.prompt;
+                    this.improvementPrompts = [];
+                    this.setState(types_1.VisualizationState.DISPLAYING);
                 }
-                // Prepare context for improvements
-                this.originalPrompt = item.prompt;
-                this.improvementPrompts = [];
-                this.lastGeneratedCode = item.html;
-                this.setState(types_1.VisualizationState.DISPLAYING);
+                return;
+            }
+            // Click on parent prompt (loads latest version)
+            const li = target.closest('li[data-index]');
+            if (li) {
+                const idx = parseInt(li.getAttribute('data-index') || '-1', 10);
+                if (idx >= 0 && idx < this.history.length) {
+                    const item = this.history[idx];
+                    const latest = item.versions[item.versions.length - 1];
+                    this.activeHistoryIndex = idx;
+                    this.displayVisualization(latest.html);
+                    this.lastGeneratedCode = latest.html;
+                    const textarea = this.container.querySelector('.ai-data-viz__textarea');
+                    textarea.value = '';
+                    const promptSummary = this.container.querySelector('.ai-data-viz__prompt-summary');
+                    const promptTextEl = this.container.querySelector('.ai-data-viz__prompt-text');
+                    if (promptSummary && promptTextEl) {
+                        promptTextEl.textContent = item.prompt;
+                        promptSummary.style.display = 'block';
+                        promptSummary.open = false;
+                    }
+                    this.originalPrompt = item.prompt;
+                    this.improvementPrompts = [];
+                    this.setState(types_1.VisualizationState.DISPLAYING);
+                }
             }
         });
         // Enable generate button only when there's text
@@ -717,12 +742,15 @@ class AIDataVisualization {
             }
             // Clear textarea for next improvement
             textarea.value = '';
-            // Persist or replace in history
-            const historyItem = { prompt: this.originalPrompt || message, html: htmlResponse, timestamp: Date.now() };
+            // Persist history (keep original + all improvements)
             if (isImprovement && this.activeHistoryIndex !== null) {
-                this.replaceHistory(this.activeHistoryIndex, historyItem);
+                this.addVersionToHistory(this.activeHistoryIndex, { html: htmlResponse, timestamp: Date.now(), prompt: message });
             }
             else {
+                const historyItem = {
+                    prompt: this.originalPrompt || message,
+                    versions: [{ html: htmlResponse, timestamp: Date.now(), prompt: this.originalPrompt || message }]
+                };
                 this.saveHistory(historyItem);
                 this.activeHistoryIndex = 0; // newest item index
             }
@@ -756,16 +784,19 @@ Generate a COMPLETE, self-contained HTML document (including CSS & JavaScript) t
 REQUIREMENTS (IMPORTANT):
 • Return ONLY HTML/JS/CSS code – no markdown, explanations or extra text.
 • Include professional, responsive styling.
-• Use the provided global function \`apiRequest(url)\` for all data calls (see usage example below).
+• USE the provided global function \`apiRequest(url)\` for ALL data calls (do NOT use fetch/axios directly).
+• apiRequest(url) returns the parsed JSON body **directly** (no \`data\` wrapper, no \`success\` flag). Treat what it returns as the endpoint's response payload.
 • Handle loading states & errors gracefully within the HTML.
-• Do NOT violate browser sandbox restrictions.
-• Try to use all the available space for the diagram do NOT set max height or width.
+• The code runs in a sandboxed iframe WITHOUT same-origin privileges → do NOT access localStorage, sessionStorage, cookies, IndexedDB, etc.
+• Try to use all the available space for the diagram (no fixed max height/width).
+• Avoid viewport units (vw, vh) for width/height inside the iframe; rely on flex layouts or percentage sizes (width:100%, height:100%).
 
 EXAMPLE API USAGE:
 \`\`\`js
 async function loadData() {
-  const data = await apiRequest('/api/your-endpoint');
-  console.log(data);
+  // Suppose /api/users returns an array of users
+  const users = await apiRequest('/api/users');
+  console.log(users.length);
 }
 \`\`\`
 
@@ -781,6 +812,10 @@ Return the finished HTML document now.`;
 AVAILABLE API ENDPOINTS:
 ${this.config.apiDescription}
 
+IMPORTANT API RULES:
+• Use ONLY the global \`apiRequest(url)\` helper for HTTP calls.
+• apiRequest(url) returns the endpoint's parsed JSON payload directly (no \`data\` or \`success\` fields).
+
 EXISTING VISUALIZATION CODE START
 ${existingCode}
 EXISTING VISUALIZATION CODE END
@@ -791,9 +826,11 @@ ${promptHistory}
 REQUIREMENTS:
 • Return ONLY HTML/JS/CSS code (no explanations).
 • Produce a FULL HTML document that can replace the previous one.
-• Continue to use the global \`apiRequest(url)\` helper for data access.
+• Continue to use \`apiRequest(url)\` for data access.
+• Avoid viewport units (vw, vh) for width/height to prevent overflow; prefer percentages or flex layouts that stay within the iframe bounds.
 • Keep styling modern and responsive.
-• Gracefully handle loading and error states.`;
+• Gracefully handle loading and error states.
+• Remember the sandbox constraints: no access to localStorage, cookies, or other same-origin only APIs.`;
     }
     /** Display the generated visualization in iframe */
     displayVisualization(htmlContent) {
@@ -810,6 +847,7 @@ REQUIREMENTS:
     /** Inject parent↔iframe bridge */
     injectApiBridge(htmlContent) {
         const bridge = `
+<style>html,body{margin:0;padding:0;width:100%;height:100%;box-sizing:border-box;overflow:hidden;}body>*{max-width:100%;}canvas,svg{display:block;max-width:100%;max-height:100%;}/* force generated container to stay in bounds */.container{width:100%!important;height:100%!important;}</style>
 <script>(function(){window.apiRequest=function(u){return new Promise((res,rej)=>{const id='req_'+Date.now()+'_'+Math.random().toString(36).substr(2,9);function h(e){const d=e.data;if(d&&d.type==='API_RESPONSE'&&d.requestId===id){window.removeEventListener('message',h);d.error?rej(new Error(d.error)):res(d.data);}}window.addEventListener('message',h);window.parent.postMessage({type:'API_REQUEST',requestId:id,url:u},'*');setTimeout(()=>{window.removeEventListener('message',h);rej(new Error('API request timeout'));},3e4);});};})();</script>
 <script>window.addEventListener('error',e=>{window.parent.postMessage({type:'IFRAME_ERROR',message:e.message,stack:e.error&&e.error.stack},'*');});window.addEventListener('unhandledrejection',e=>{window.parent.postMessage({type:'IFRAME_ERROR',message:e.reason?e.reason.message||String(e.reason):'Unhandled rejection',stack:e.reason&&e.reason.stack},'*');});</script>`;
         const headClose = htmlContent.toLowerCase().indexOf('</head>');
@@ -826,9 +864,11 @@ REQUIREMENTS:
     sanitizeHtmlResponse(raw) {
         let cleaned = raw.trim();
         // Remove leading ```html or ```
-        cleaned = cleaned.replace(/^```\s*html\s*/i, '').replace(/^```/, '');
+        cleaned = cleaned.replace(/^````?\s*html\s*/i, '').replace(/^```/, '');
         // Remove trailing ```
-        cleaned = cleaned.replace(/```\s*$/i, '').trim();
+        cleaned = cleaned.replace(/````?\s*$/i, '').trim();
+        // Strip stray sourceMappingURL comments that break devtools when running inside about:srcdoc
+        cleaned = cleaned.replace(/\/\/[@#]\s*sourceMappingURL=.*$/gim, '');
         return cleaned;
     }
     /** Clear current visualization */
@@ -856,6 +896,8 @@ REQUIREMENTS:
     }
     /** Update UI state */
     setState(state) {
+        // Persist internal state value for future checks
+        this.state = state;
         const generateBtn = this.container.querySelector('.ai-data-viz__generate-btn');
         const btnText = generateBtn.querySelector('.ai-data-viz__btn-text');
         const btnSpinner = generateBtn.querySelector('.ai-data-viz__spinner');
@@ -930,23 +972,36 @@ REQUIREMENTS:
     loadHistory() {
         try {
             const raw = localStorage.getItem(this.HISTORY_KEY);
-            if (raw)
-                this.history = JSON.parse(raw);
+            if (!raw)
+                return;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed))
+                return;
+            this.history = parsed.map((it) => {
+                if (it && it.versions)
+                    return it;
+                // Legacy single-version entry → migrate
+                return {
+                    prompt: it.prompt,
+                    versions: [{ html: it.html, timestamp: it.timestamp }]
+                };
+            });
         }
         catch (_a) { }
     }
     saveHistory(item) {
         this.history.unshift(item);
         this.history = this.history.slice(0, 10);
-        try {
-            localStorage.setItem(this.HISTORY_KEY, JSON.stringify(this.history));
-        }
-        catch (_a) { }
+        this.persistHistory();
     }
-    replaceHistory(idx, item) {
+    // Append a new version to an existing prompt history
+    addVersionToHistory(idx, version) {
         if (idx < 0 || idx >= this.history.length)
             return;
-        this.history[idx] = item;
+        this.history[idx].versions.push(version);
+        this.persistHistory();
+    }
+    persistHistory() {
         try {
             localStorage.setItem(this.HISTORY_KEY, JSON.stringify(this.history));
         }
@@ -960,42 +1015,65 @@ REQUIREMENTS:
         this.history.forEach((item, idx) => {
             const li = document.createElement('li');
             li.setAttribute('data-index', String(idx));
+            // Header (prompt + buttons)
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
             const span = document.createElement('span');
-            span.textContent = `${new Date(item.timestamp).toLocaleString()} — ${item.prompt.slice(0, 60)}`;
+            span.textContent = item.prompt.slice(0, 120);
             const btnDiv = document.createElement('div');
             btnDiv.className = 'ai-data-viz__history-btn-div';
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = 'Publish';
-            btn.className = 'ai-data-viz__history-publish-btn';
+            const pubBtn = document.createElement('button');
+            pubBtn.type = 'button';
+            pubBtn.textContent = 'Publish';
+            pubBtn.className = 'ai-data-viz__history-publish-btn';
             const rmBtn = document.createElement('button');
             rmBtn.type = 'button';
             rmBtn.textContent = 'Remove';
             rmBtn.className = 'ai-data-viz__history-remove-btn';
-            btnDiv.appendChild(btn);
+            btnDiv.appendChild(pubBtn);
             btnDiv.appendChild(rmBtn);
-            li.appendChild(span);
-            li.appendChild(btnDiv);
+            header.appendChild(span);
+            header.appendChild(btnDiv);
+            li.appendChild(header);
             list.appendChild(li);
+            // Versions list (including original and all improvements)
+            if (item.versions.length) {
+                const vUl = document.createElement('ul');
+                vUl.className = 'ai-data-viz__history-version-list';
+                item.versions.forEach((v, vIdx) => {
+                    const vLi = document.createElement('li');
+                    vLi.setAttribute('data-index', String(idx));
+                    vLi.setAttribute('data-version', String(vIdx));
+                    const promptText = vIdx === 0
+                        ? (item.prompt.slice(0, 120) || 'Original')
+                        : (v.prompt ? v.prompt.slice(0, 120) : 'Improvement');
+                    vLi.textContent = `v${vIdx} — ${promptText}`;
+                    vUl.appendChild(vLi);
+                });
+                list.appendChild(vUl);
+            }
         });
     }
     clearHistory() {
+        // Remove persisted history
         this.history = [];
         this.activeHistoryIndex = null;
         try {
             localStorage.removeItem(this.HISTORY_KEY);
         }
         catch (_a) { }
+        // Reset current visualization & prompt context
+        this.clearVisualization();
+        // Re-render empty list
         this.renderHistoryList();
     }
     removeHistory(idx) {
         if (idx < 0 || idx >= this.history.length)
             return;
         this.history.splice(idx, 1);
-        try {
-            localStorage.setItem(this.HISTORY_KEY, JSON.stringify(this.history));
-        }
-        catch (_a) { }
+        this.persistHistory();
         this.renderHistoryList();
     }
 }
