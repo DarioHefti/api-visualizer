@@ -1,12 +1,12 @@
 (function () {
   // Prevent multiple injections
   if (window.__FETCH_XHR_INTERCEPTOR_LOADED__) {
-    console.log('API Tracker & Visualizer interceptor already loaded, skipping...');
+    console.log('API Data Visualizer interceptor already loaded, skipping...');
     return;
   }
   window.__FETCH_XHR_INTERCEPTOR_LOADED__ = true;
   
-  console.log('🔍 API Tracker & Visualizer interceptor loaded');
+  console.log('🔍 API Data Visualizer interceptor loaded');
   
   const sendToExtension = payload => {
     console.log(`📡 Intercepted ${payload.type.toUpperCase()} request:`, payload.request.url);
@@ -227,5 +227,5 @@
   };
 
   console.log('✅ XMLHttpRequest interceptor installed');
-  console.log('🎯 API Tracker & Visualizer interceptor fully loaded and ready');
+  console.log('🎯 API Data Visualizer interceptor fully loaded and ready');
 })();

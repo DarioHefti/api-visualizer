@@ -2,7 +2,7 @@
 if (!window.__API_TRACKER_VISUALIZER_INJECTED__) {
   window.__API_TRACKER_VISUALIZER_INJECTED__ = true;
   
-  console.log('🔧 API Tracker & Visualizer content script loaded on:', window.location.href);
+  console.log('🔧 API Data Visualizer content script loaded on:', window.location.href);
   
   // ===== REQUEST INTERCEPTION FUNCTIONALITY (from good-request-tracking) =====
   
@@ -167,7 +167,7 @@ async function initVisualizer() {
 
 // Add debugging for page lifecycle
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('🔧 DOM Content Loaded, API tracker & visualizer should be active');
+  console.log('🔧 DOM Content Loaded, API Data Visualizer should be active');
 });
 
-console.log('✅ API Tracker & Visualizer content script fully loaded');
+console.log('✅ API Data Visualizer content script fully loaded');

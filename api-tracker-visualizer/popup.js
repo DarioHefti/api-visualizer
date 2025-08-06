@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const generateBtn = document.getElementById('generateBtn');
   const logPreview = document.getElementById('logPreview');
   const spinner = document.getElementById('spinner');
-  const refreshBtn = document.getElementById('refresh');
   const clearBtn = document.getElementById('clear');
   const statsDiv = document.getElementById('stats');
   const schemaContentDiv = document.getElementById('schemaContent');
@@ -453,11 +452,6 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         generateBtn.disabled = true;
       });
     }
-  });
-
-  // Refresh data
-  refreshBtn.addEventListener('click', function() {
-    loadInitialData();
   });
 
   // Listen for storage changes to update UI in real-time

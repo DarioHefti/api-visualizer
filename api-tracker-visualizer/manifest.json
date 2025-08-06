@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "API Tracker & Visualizer",
+  "name": "API Data Visualizer",
   "description": "Record API requests, generate schemas, create AI descriptions, and visualize with AI-powered dashboards",
   "version": "1.0",
   "permissions": [
@@ -23,7 +23,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "API Tracker & Visualizer"
+    "default_title": "API Data Visualizer"
   },
   "web_accessible_resources": [
     {

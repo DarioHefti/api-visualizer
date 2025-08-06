@@ -693,4 +693,4 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
-console.log('🔧 API Tracker & Visualizer background script loaded successfully');
+console.log('🔧 API Data Visualizer background script loaded successfully');
