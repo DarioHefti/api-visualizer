@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const spinner = document.getElementById('spinner');
   const clearBtn = document.getElementById('clear');
   const statsDiv = document.getElementById('stats');
-  const schemaContentDiv = document.getElementById('schemaContent');
+  const schemaContentDiv = document.getElementById('schemaContent') || logPreview;
   const aiSettingsDetails = document.getElementById('aiSettings');
 
   let recordingActive = false;
@@ -122,19 +122,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Render recording log
+  // Removed API Request Recording table display. Keeping function for compatibility.
   function renderLog(log = []) {
-    if (!log.length) {
-      logPreview.innerHTML = '<em>No requests captured yet.</em>';
-      return;
-    }
-    const rows = log.map((r, idx) => 
-      `<tr><td>${r.method}</td><td title="${r.url}">${r.url}</td></tr>`
-    ).join('');
-    logPreview.innerHTML = `
-      <table style="width:100%; font-size:12px;">
-        <thead><tr><th>Method</th><th>URL</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+    // The original recording request table is no longer displayed.
+    // We intentionally leave this function empty to suppress the old table.
+    return;
   }
 
   // Helper function to make AI requests
@@ -381,11 +373,15 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
 
   function displaySchemas(schemas) {
     if (schemas.length === 0) {
-      schemaContentDiv.innerHTML = `
+      const noDataHtml = `
         <div class="no-data">
           No schemas tracked yet. Start recording API requests to see schemas here.
         </div>
       `;
+      schemaContentDiv.innerHTML = noDataHtml;
+      if (logPreview) {
+        logPreview.innerHTML = noDataHtml;
+      }
       return;
     }
 
@@ -441,6 +437,9 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
       }).join('');
     
     schemaContentDiv.innerHTML = html;
+    if (logPreview) {
+      logPreview.innerHTML = html;
+    }
   }
 
   // Clear all data
