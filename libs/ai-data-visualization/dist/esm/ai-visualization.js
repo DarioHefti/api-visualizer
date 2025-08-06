@@ -844,7 +844,7 @@ REQUIREMENTS:
     /** Inject parent↔iframe bridge */
     injectApiBridge(htmlContent) {
         const bridge = `
-<style>html,body{margin:0;padding:0;width:100%;height:100%;box-sizing:border-box;overflow:hidden;}body>*{max-width:100%;}canvas,svg{display:block;max-width:100%;max-height:100%;}/* force generated container to stay in bounds */.container{width:100%!important;height:100%!important;}</style>
+<style>body{margin:0;padding:0;width:100%;height:100%;box-sizing:border-box;overflow-y:scroll;}body>*{max-width:100%;}canvas,svg{display:block;max-width:100%;max-height:100%;}/* force generated container to stay in bounds */.container{width:100%!important;height:100%!important;}</style>
 <script>(function(){window.apiRequest=function(u){return new Promise((res,rej)=>{const id='req_'+Date.now()+'_'+Math.random().toString(36).substr(2,9);function h(e){const d=e.data;if(d&&d.type==='API_RESPONSE'&&d.requestId===id){window.removeEventListener('message',h);d.error?rej(new Error(d.error)):res(d.data);}}window.addEventListener('message',h);window.parent.postMessage({type:'API_REQUEST',requestId:id,url:u},'*');setTimeout(()=>{window.removeEventListener('message',h);rej(new Error('API request timeout'));},3e4);});};})();</script>
 <script>window.addEventListener('error',e=>{window.parent.postMessage({type:'IFRAME_ERROR',message:e.message,stack:e.error&&e.error.stack},'*');});window.addEventListener('unhandledrejection',e=>{window.parent.postMessage({type:'IFRAME_ERROR',message:e.reason?e.reason.message||String(e.reason):'Unhandled rejection',stack:e.reason&&e.reason.stack},'*');});</script>`;
         const headClose = htmlContent.toLowerCase().indexOf('</head>');
