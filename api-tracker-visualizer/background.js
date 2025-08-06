@@ -506,19 +506,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   ['requestHeaders']
 );
 
-// Capture request URLs during recording
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    console.log(`[Recorder] -> ${details.method} ${details.url}`);
-    if (!shouldTrack(details)) return;
-
-    const entry = { url: details.url, method: details.method, response: '(pending...)' };
-    recordingLog.push(entry);
-    persistLog();
-  },
-  { urls: ['<all_urls>'] },
-  ['requestBody']
-);
 
 // Capture completed requests during recording
 chrome.webRequest.onCompleted.addListener(
@@ -527,37 +514,38 @@ chrome.webRequest.onCompleted.addListener(
     if (!shouldTrack(details, { requireResponse: true, requireJsonHeader: true })) return;
 
     
-    // Find pending entry and mark it as completed via webRequest
-    const idx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET' && e.response === '(pending...)');
-    if (idx !== -1) {
-      console.log('[Recorder] Fetching response body (fallback)');
-      
-      chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
-        const site = siteConfigs[recordingOrigin] || {};
-        const authToken = site.jwtToken || '';
-
-        fetch(details.url, {
-          method: 'GET',
-          headers: {
-            ...(authToken ? { 'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
-            'Content-Type': 'application/json'
-          }
-        }).then(response => response.json())
-          .then(data => {
-            console.log('[Recorder] Response captured, generating schema:'+details.url);
-            const schema = jsonToSchema(data);
-            console.log('------------------------');
-            console.log(schema);
-            recordingLog[idx].response = schema;
-            persistLog();
-          })
-          .catch(err => {
-            console.error('[Recorder] Fallback fetch failed:', err.message);
-            recordingLog[idx].response = '(fallback fetch failed: ' + err.message + ')';
-            persistLog();
-          });
-      });
+    // Ensure there's an entry for this request
+    let idx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET');
+    if (idx === -1) {
+      recordingLog.push({ url: details.url, method: details.method, response: '(pending...)' });
+      idx = recordingLog.length - 1;
     }
+
+    console.log('[Recorder] Fetching response body (fallback)');
+
+    chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
+      const site = siteConfigs[recordingOrigin] || {};
+      const authToken = site.jwtToken || '';
+
+      fetch(details.url, {
+        method: 'GET',
+        headers: {
+          ...(authToken ? { 'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
+          'Content-Type': 'application/json'
+        }
+      }).then(response => response.json())
+        .then(data => {
+          console.log('[Recorder] Response captured, generating schema:' + details.url);
+          const schema = jsonToSchema(data);
+          recordingLog[idx].response = schema;
+          persistLog();
+        })
+        .catch(err => {
+          console.error('[Recorder] Fallback fetch failed:', err.message);
+          recordingLog[idx].response = '(fallback fetch failed: ' + err.message + ')';
+          persistLog();
+        });
+    });
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
