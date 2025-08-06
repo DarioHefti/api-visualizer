@@ -6,25 +6,7 @@ if (!window.__API_TRACKER_VISUALIZER_INJECTED__) {
   
   // ===== REQUEST INTERCEPTION FUNCTIONALITY (from good-request-tracking) =====
   
-  // Try direct injection first (fallback method)
-  try {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('injected.js');
-    script.onload = function() {
-      console.log('✅ Injected script loaded directly');
-      this.remove();
-    };
-    script.onerror = function() {
-      console.warn('❌ Direct injection failed, trying background method');
-      // Fallback to background script injection
-      chrome.runtime.sendMessage({ type: 'inject_script' });
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } catch (error) {
-    console.warn('Direct injection error:', error);
-    // Fallback to background script injection
-    chrome.runtime.sendMessage({ type: 'inject_script' });
-  }
+  // (Injection moved to background script - will be triggered on recording start)
 
   // Listen for messages from the injected script (request interception)
   window.addEventListener('message', (event) => {
@@ -39,16 +21,7 @@ if (!window.__API_TRACKER_VISUALIZER_INJECTED__) {
     }
   });
 
-  // Check if the injected script is working after a delay
-  setTimeout(() => {
-    if (!window.__FETCH_XHR_INTERCEPTOR_LOADED__) {
-      console.warn('⚠️ Injected script not detected after 5 seconds, injection may have failed');
-      // Try re-injection
-      chrome.runtime.sendMessage({ type: 'inject_script' });
-    } else {
-      console.log('✅ Injected script confirmed active');
-    }
-  }, 5000);
+  // (Interceptor status check removed – interception only enabled during active recording)
 }
 
 // ===== AI VISUALIZATION FUNCTIONALITY (from good-vizualization) =====

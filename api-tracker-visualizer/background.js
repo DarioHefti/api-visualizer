@@ -276,7 +276,7 @@ function shouldTrack(details, { requireResponse = false, requireJsonHeader = fal
   if (details.method !== 'GET') return false;
   if (details.url.startsWith('chrome-extension://')) return false;
   // Skip typical static asset extensions
-  if (/\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)(?:\?|$)/i.test(details.url)) return false;
+  if (/\.(?:json|js|mjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)(?:\?|$)/i.test(details.url)) return false;
   if (details.initiator && details.initiator.startsWith('chrome-extension://')) return false;
 
   if (requireResponse) {
@@ -375,6 +375,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   
   // Handle intercepted requests (from injected script)
   if (msg.type === 'intercepted') {
+    if (!isRecording) return; // Ignore when not actively recording
     try {
       logEntry(msg.data.type, msg.data.request ? { ...msg.data.request, response: msg.data.response, data: msg.data.data } : msg.data);
     } catch (error) {
@@ -407,6 +408,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.storage.local.set({ recordingActive: true, recordingLog: [] });
       persistLog();
       console.log('[Recorder] Started for origin', recordingOrigin);
+      
+      // Inject fetch/XHR interceptor into the page when recording starts
+      chrome.scripting.executeScript({
+        target: { tabId: debuggerTabId },
+        files: ['injected.js'],
+        world: 'MAIN'
+      }).then(() => {
+        console.log('[Recorder] Interceptor injected');
+      }).catch(err => {
+        console.warn('[Recorder] Failed to inject interceptor:', err);
+      });
       
       // Attach debugger to capture response bodies
       chrome.debugger.attach({ tabId: debuggerTabId }, "1.3", () => {
