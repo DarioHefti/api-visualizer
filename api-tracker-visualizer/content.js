@@ -87,7 +87,6 @@ async function initVisualizer() {
   // Create container element
   const container = document.createElement('div');
   container.id = 'ai-dashboard';
-  container.style.position = 'fixed';
   container.style.bottom = '0';
   container.style.left = '0';
   container.style.right = '0';

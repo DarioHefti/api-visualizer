@@ -757,6 +757,7 @@ REQUIREMENTS (IMPORTANT):
 • Handle loading states & errors gracefully within the HTML.
 • Do NOT violate browser sandbox restrictions.
 • Try to use all the available space for the diagram do NOT set max height or width.
+• Avoid viewport units (vw, vh) for width/height inside the iframe; rely on flex layouts or percentage sizes (width:100%, height:100%).
 
 EXAMPLE API USAGE:
 \`\`\`js
