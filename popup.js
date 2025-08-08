@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   // Get all UI elements
   const chatUrlInput = document.getElementById('chatUrl');
   const chatModelInput = document.getElementById('chatModel');
@@ -15,34 +15,55 @@ document.addEventListener('DOMContentLoaded', function() {
   const schemaContentDiv = document.getElementById('schemaContent') || logPreview;
   const aiSettingsDetails = document.getElementById('aiSettings');
 
+  // Schema modal elements
+  const schemaModal = document.getElementById('schemaModal');
+  const schemaModalTitle = document.getElementById('schemaModalTitle');
+  const schemaModalClose = document.getElementById('schemaModalClose');
+  const schemaTree = document.getElementById('schemaTree');
+
+  function openSchemaModal(title, schema) {
+    schemaModalTitle.textContent = title;
+    renderSchemaTree(schemaTree, schema);
+    schemaModal.classList.add('open');
+    schemaModal.setAttribute('aria-hidden', 'false');
+  }
+  function closeSchemaModal() {
+    schemaModal.classList.remove('open');
+    schemaModal.setAttribute('aria-hidden', 'true');
+    schemaTree.innerHTML = '';
+  }
+  schemaModalClose.addEventListener('click', closeSchemaModal);
+  schemaModal.addEventListener('click', (e) => {
+    if (e.target === schemaModal) closeSchemaModal();
+  });
+
   let recordingActive = false;
-  
+
   // Load initial data
   function loadInitialData() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const origin = tabs.length ? new URL(tabs[0].url || '').origin : null;
       chrome.storage.local.get([
-        'siteConfigs', 'chatUrl', 'chatModel', 'apiKey', 
+        'siteConfigs', 'chatUrl', 'chatModel', 'apiKey',
         'recordingLog', 'recordingActive'
       ], (data) => {
-        const { 
-          siteConfigs = {}, chatUrl, chatModel, apiKey, 
+        const {
+          siteConfigs = {}, chatUrl, chatModel, apiKey,
           recordingLog = [], recordingActive: recAct
         } = data;
-        
+
         // Load AI settings
         if (chatUrl) chatUrlInput.value = chatUrl;
         if (chatModel) chatModelInput.value = chatModel;
         if (apiKey) apiKeyInput.value = apiKey;
-        
+
         // Set recording state
         recordingActive = !!recAct;
         recordBtn.disabled = recordingActive;
         stopBtn.disabled = !recordingActive;
-        
+
         // Load and display data
-        renderLog(recordingLog);
-        generateBtn.disabled = !recordingLog.length;
+        generateBtn.disabled = !getDedupedEntries(recordingLog).length;
         loadSchemas();
         toggleAiDetails();
       });
@@ -63,11 +84,11 @@ document.addEventListener('DOMContentLoaded', function() {
       chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
         const site = siteConfigs[origin] || {};
         siteConfigs[origin] = site;
-        chrome.storage.local.set({ 
-          siteConfigs, 
-          chatUrl: chatUrlInput.value.trim(), 
-          chatModel: chatModelInput.value.trim(), 
-          apiKey: apiKeyInput.value.trim() 
+        chrome.storage.local.set({
+          siteConfigs,
+          chatUrl: chatUrlInput.value.trim(),
+          chatModel: chatModelInput.value.trim(),
+          apiKey: apiKeyInput.value.trim()
         }, () => {
           alert('Saved!');
           toggleAiDetails();
@@ -84,11 +105,11 @@ document.addEventListener('DOMContentLoaded', function() {
       chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
         const site = siteConfigs[origin] || {};
         siteConfigs[origin] = site;
-        chrome.storage.local.set({ 
-          siteConfigs, 
-          chatUrl: chatUrlInput.value.trim(), 
-          chatModel: chatModelInput.value.trim(), 
-          apiKey: apiKeyInput.value.trim() 
+        chrome.storage.local.set({
+          siteConfigs,
+          chatUrl: chatUrlInput.value.trim(),
+          chatModel: chatModelInput.value.trim(),
+          apiKey: apiKeyInput.value.trim()
         }, cb);
       });
     });
@@ -99,10 +120,10 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (!tab) return;
       const origin = new URL(tab.url || '').origin;
-      chrome.runtime.sendMessage({ 
-        action: 'startRecording', 
-        origin, 
-        tabId: tab.id 
+      chrome.runtime.sendMessage({
+        action: 'startRecording',
+        origin,
+        tabId: tab.id
       }, () => {
         recordingActive = true;
         recordBtn.disabled = true;
@@ -121,13 +142,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // Render recording log
-  // Removed API Request Recording table display. Keeping function for compatibility.
-  function renderLog(log = []) {
-    // The original recording request table is no longer displayed.
-    // We intentionally leave this function empty to suppress the old table.
-    return;
-  }
 
   // Helper function to make AI requests
   async function makeAIRequest(prompt, systemMessage, chatUrl, chatModel, apiKey) {
@@ -138,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
         { role: 'user', content: prompt }
       ]
     };
-    
+
     const res = await fetch(chatUrl, {
       method: 'POST',
       headers: {
@@ -147,13 +161,13 @@ document.addEventListener('DOMContentLoaded', function() {
       },
       body: JSON.stringify(body)
     });
-    
+
     if (!res.ok) throw new Error(await res.text());
-    
+
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error('Invalid AI response');
-    
+
     return content;
   }
 
@@ -164,24 +178,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const originalText = generateBtn.textContent;
     generateBtn.textContent = 'Analyzing URLs...';
     generateBtn.disabled = true;
-    
+
     try {
       const { recordingLog = [], chatUrl, chatModel, apiKey } = await chrome.storage.local.get([
         'recordingLog', 'chatUrl', 'chatModel', 'apiKey'
       ]);
-      
-      if (!recordingLog.length) {
+
+      const deduped = getDedupedEntries(recordingLog);
+      if (!deduped.length) {
         alert('No recorded requests.');
         return;
       }
-      
+
       if (!chatUrl || !chatModel) {
         alert('Chat URL or model missing.');
         return;
       }
 
-      const escape = (str) => str.replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
-      
+      const escape = (str) => str.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+
       // STEP 1: Ask AI which URLs are interesting for data visualization
       const urlAnalysisPrompt = `You are an expert data visualization consultant analyzing API endpoints to identify which ones contain valuable data for creating charts, graphs, dashboards, and visual analytics.
 
@@ -206,7 +221,7 @@ EXCLUDE URLs that are primarily:
 For each URL, analyze the response schema and determine if it contains data that would create meaningful, insightful visualizations.
 
 URLs and Schemas:
-${recordingLog.map((r,i) => `${i+1}. ${escape(r.url)}
+${deduped.map((r, i) => `${i + 1}. ${escape(r.url)}
    Schema: ${typeof r.response === 'string' ? r.response : JSON.stringify(r.response, null, 2)}
 `).join('\n')}
 
@@ -214,7 +229,7 @@ Return ONLY a JSON array of numbers representing the interesting URLs (e.g., [1,
 Consider data richness, visualization potential, and business value. Be selective - choose only URLs that would create compelling, data-driven visualizations.`;
 
       console.log('Step 1: Analyzing URLs for visualization potential...');
-      
+
       const interestingIndices = await makeAIRequest(
         urlAnalysisPrompt,
         'You are a data visualization expert. Return only a JSON array of numbers. No explanations, no text, just the array.',
@@ -222,9 +237,9 @@ Consider data richness, visualization potential, and business value. Be selectiv
         chatModel,
         apiKey
       );
-      
+
       console.log('AI selected interesting URLs:', interestingIndices);
-      
+
       // Parse the response to get the interesting URL indices
       let selectedIndices;
       try {
@@ -234,25 +249,33 @@ Consider data richness, visualization potential, and business value. Be selectiv
         }
       } catch (e) {
         console.warn('Failed to parse AI response, using all URLs:', e);
-        selectedIndices = recordingLog.map((_, i) => i + 1);
+        selectedIndices = deduped.map((_, i) => i + 1);
       }
-      
-      // Filter recording log to only include interesting URLs
-      const interestingRequests = recordingLog.filter((_, index) => 
+
+      // Filter deduped to only include interesting URLs
+      const interestingRequests = deduped.filter((_, index) =>
         selectedIndices.includes(index + 1)
       );
-      
+
       if (interestingRequests.length === 0) {
         alert('No URLs were identified as interesting for data visualization. Try recording more API calls with data-rich endpoints.');
         return;
       }
-      
+
       console.log(`Step 2: Generating API description for ${interestingRequests.length} interesting URLs...`);
       generateBtn.textContent = 'Generating API Description...';
-      
+
       // STEP 2: Generate API description using only the interesting URLs
       const apiDescriptionPrompt = `Analyze the following carefully selected API endpoints that contain rich data perfect for visualization.
 Create a comprehensive OpenAPI JSON description that will be used to build interactive dashboards, charts, and data visualizations.
+
+Important constraints you MUST follow:
+- DO NOT include full URLs in the 'paths' keys. Use ONLY the path portion (must start with '/').
+- DO NOT invent or change base URLs. We will provide servers separately.
+- The 'servers' section should either be omitted or contain the exact backend origins of the provided endpoints.
+- NEVER use the current page/frontend origin. Use the origins derived from the provided URLs.
+- Preserve HTTP methods exactly as given. Do not change methods.
+- Ensure schemas reflect the provided response structures.
 
 Focus on:
 - Clear endpoint descriptions highlighting the data value
@@ -261,13 +284,13 @@ Focus on:
 - Mark ALL parameters as REQUIRED for robust API documentation
 
 Selected URLs and Their Schemas:
-${interestingRequests.map((r,i) => `### Endpoint ${i+1}
+${interestingRequests.map((r, i) => `### Endpoint ${i + 1}
 URL: ${escape(r.url)}
 Method: ${r.method}
 Response Schema: ${typeof r.response === 'string' ? r.response : JSON.stringify(r.response, null, 2)}
 `).join('\n')}
 
-Return a complete OpenAPI 3.0 JSON specification optimized for data visualization tools.`;
+Return a complete OpenAPI 3.0 JSON specification optimized for data visualization tools. Do not include any text outside of the JSON.`;
 
       const description = await makeAIRequest(
         apiDescriptionPrompt,
@@ -276,8 +299,18 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         chatModel,
         apiKey
       );
-      
+
       console.log('Generated API description:', description);
+
+      // Post-process to enforce backend servers and path-only keys
+      let finalDescription = description;
+      try {
+        const parsed = JSON.parse(description);
+        const normalized = normalizeOpenApiSpec(parsed, interestingRequests);
+        finalDescription = JSON.stringify(normalized, null, 2);
+      } catch (e) {
+        console.warn('Failed to parse AI OpenAPI JSON; storing raw output', e);
+      }
 
       // Save description to siteConfigs
       chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -285,22 +318,21 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         const origin = new URL(tab.url || '').origin;
         chrome.storage.local.get(['siteConfigs', 'recordingLog'], ({ siteConfigs = {}, recordingLog = [] }) => {
           const site = siteConfigs[origin] || {};
-          site.apiDescription = description;
-          
+          site.apiDescription = finalDescription;
+
           // Derive apiBase from the first interesting request if not already set
           if (interestingRequests.length && !site.apiBase) {
             try {
               const firstUrl = new URL(interestingRequests[0].url);
               site.apiBase = firstUrl.origin;
               console.log('Derived apiBase from interesting requests:', site.apiBase);
-            } catch(e) {
+            } catch (e) {
               console.warn('Failed to derive apiBase:', e);
             }
           }
-          
+
           siteConfigs[origin] = site;
           chrome.storage.local.set({ siteConfigs, recordingLog: [] }, () => {
-            renderLog([]);
             generateBtn.disabled = true;
             generateBtn.textContent = originalText;
             spinner.style.display = 'none';
@@ -352,27 +384,93 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
     injectBtn.classList.remove('highlight');
   });
 
+  // Deduplicate by canonicalKey if available, else by URL+method (path only)
+  function getDedupedEntries(schemas) {
+    const map = new Map();
+    for (const entry of (schemas || [])) {
+      const key = entry.canonicalKey || (() => {
+        try {
+          const u = new URL(entry.url);
+          return `${u.origin}${u.pathname}::${(entry.method || 'GET').toUpperCase()}`;
+        } catch {
+          return `${entry.url}::${(entry.method || 'GET').toUpperCase()}`;
+        }
+      })();
+      if (!map.has(key)) {
+        map.set(key, entry);
+      } else {
+        // Prefer the newest with a schema object
+        const existing = map.get(key);
+        const existingTime = new Date(existing.timestamp || 0).getTime();
+        const incomingTime = new Date(entry.timestamp || 0).getTime();
+        const chooseIncoming = (incomingTime > existingTime) || (typeof existing.response !== 'object' && typeof entry.response === 'object');
+        if (chooseIncoming) map.set(key, entry);
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  // Normalize OpenAPI spec to ensure backend servers and path-only keys
+  function normalizeOpenApiSpec(spec, interestingRequests) {
+    const uniqueOrigins = Array.from(new Set((interestingRequests || []).map(r => {
+      try { return new URL(r.url).origin; } catch { return null; }
+    }).filter(Boolean)));
+
+    const normalized = { ...spec };
+    if (!normalized.openapi) {
+      normalized.openapi = '3.0.3';
+    }
+
+    if (!Array.isArray(normalized.servers) || normalized.servers.length === 0) {
+      normalized.servers = uniqueOrigins.map(url => ({ url }));
+    } else {
+      // Overwrite servers to ensure backend origins
+      normalized.servers = uniqueOrigins.map(url => ({ url }));
+    }
+
+    const paths = normalized.paths || {};
+    const newPaths = {};
+    Object.keys(paths).forEach((key) => {
+      let newKey = key;
+      try {
+        if (key.includes('://')) {
+          newKey = new URL(key).pathname || '/';
+        }
+      } catch { /* ignore */ }
+      if (!newKey.startsWith('/')) newKey = '/' + newKey;
+      if (!newPaths[newKey]) {
+        newPaths[newKey] = paths[key];
+      } else {
+        // Merge methods if collision
+        newPaths[newKey] = { ...newPaths[newKey], ...paths[key] };
+      }
+    });
+    normalized.paths = newPaths;
+
+    return normalized;
+  }
+
   // Schema tracking functionality
   function loadSchemas() {
-    chrome.storage.local.get(['recordingLog'], function(data) {
-      const entries = data.recordingLog || [];
+    chrome.storage.local.get(['recordingLog'], function (data) {
+      const entries = getDedupedEntries(data.recordingLog || []);
       displayStats(entries);
       displaySchemas(entries);
     });
   }
 
   function displayStats(schemas) {
-    const uniqueUrls = new Set(schemas.map(s => s.url)).size;
-    const totalRequests = schemas.length;
-    
+    const uniqueUrls = new Set((schemas || []).map(s => s.canonicalKey || s.url)).size;
+    const totalRequests = (schemas || []).length;
+
     statsDiv.innerHTML = `
       <strong>📊 Stats:</strong> 
-      ${totalRequests} total responses intercepted from ${uniqueUrls} unique URLs
+      ${totalRequests} total unique endpoints from ${uniqueUrls} unique URLs
     `;
   }
 
   function displaySchemas(schemas) {
-    if (schemas.length === 0) {
+    if (!schemas || schemas.length === 0) {
       const noDataHtml = `
         <div class="no-data">
           No schemas tracked yet. Start recording API requests to see schemas here.
@@ -385,29 +483,33 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
       return;
     }
 
-    // Group by URL and show most recent schema for each
+    // Group by canonical key
     const urlGroups = {};
     schemas.forEach((entry, index) => {
-      if (!urlGroups[entry.url]) {
-        urlGroups[entry.url] = [];
+      const groupKey = entry.canonicalKey || (() => {
+        try { const u = new URL(entry.url); return `${u.origin}${u.pathname}::${(entry.method || 'GET').toUpperCase()}`; } catch { return `${entry.url}::${(entry.method || 'GET').toUpperCase()}`; }
+      })();
+      if (!urlGroups[groupKey]) {
+        urlGroups[groupKey] = { latest: null, entries: [] };
       }
-      urlGroups[entry.url].push({...entry, originalIndex: index});
+      urlGroups[groupKey].entries.push({ ...entry, originalIndex: index });
+      const latest = urlGroups[groupKey].latest;
+      if (!latest || new Date(entry.timestamp || 0) > new Date(latest.timestamp || 0)) {
+        urlGroups[groupKey].latest = entry;
+      }
     });
-    
+
     const html = Object.entries(urlGroups)
       .sort(([, a], [, b]) => {
-        // Sort by most recent timestamp
-        const latestA = Math.max(...a.map(e => new Date(e.timestamp || 0).getTime()));
-        const latestB = Math.max(...b.map(e => new Date(e.timestamp || 0).getTime()));
+        const latestA = new Date(a.latest?.timestamp || 0).getTime();
+        const latestB = new Date(b.latest?.timestamp || 0).getTime();
         return latestB - latestA;
       })
-      .slice(0, 5) // Show only top 5 most recent
-      .map(([url, entries]) => {
-        const latest = entries[entries.length - 1];
-        const count = entries.length;
+      .slice(0, 10)
+      .map(([key, group]) => {
+        const latest = group.latest;
+        const count = group.entries.length;
         const timestamp = latest.timestamp ? new Date(latest.timestamp).toLocaleString() : 'Unknown';
-        
-        // Get schema summary
         const schema = latest.response;
         let schemaInfo = '';
         if (schema && typeof schema === 'object') {
@@ -422,11 +524,15 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         } else if (typeof schema === 'string') {
           schemaInfo = schema;
         }
-        
+
+        const displayUrl = (() => {
+          try { const u = new URL(latest.url); return `${u.origin}${u.pathname}`; } catch { return latest.url; }
+        })();
+        const safeKey = encodeURIComponent(key);
         return `
           <div style="border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; padding: 8px; background: white;">
-            <div style="font-weight: bold; color: #0066cc; font-size: 10px; margin-bottom: 4px;">
-              ${url}
+            <div class="url-item" data-key="${safeKey}" style="font-weight: bold; color: #0066cc; font-size: 10px; margin-bottom: 4px;">
+              ${displayUrl}
             </div>
             <div style="font-size: 9px; color: #666;">
               <div>${schemaInfo}</div>
@@ -435,19 +541,79 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
           </div>
         `;
       }).join('');
-    
+
     schemaContentDiv.innerHTML = html;
     if (logPreview) {
       logPreview.innerHTML = html;
     }
+
+    // Click handlers to open modal with tree
+    schemaContentDiv.querySelectorAll('.url-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const key = decodeURIComponent(el.getAttribute('data-key'));
+        const group = urlGroups[key];
+        if (!group || !group.latest) return;
+        openSchemaModal(group.latest.url, group.latest.response);
+      });
+    });
+  }
+
+  // Tree renderer for JSON Schema (object/array focus)
+  function renderSchemaTree(container, schema) {
+    container.innerHTML = '';
+    const root = document.createElement('div');
+    root.appendChild(buildNode('root', schema));
+    container.appendChild(root);
+  }
+
+  function buildNode(name, schema) {
+    const li = document.createElement('li');
+    const nodeDiv = document.createElement('div');
+    nodeDiv.className = 'node';
+
+    const label = document.createElement('span');
+    const type = schema?.type || (schema?.anyOf ? 'anyOf' : 'unknown');
+    label.textContent = `${name}: ${type}`;
+    nodeDiv.appendChild(label);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'expanded';
+    const childrenContainer = document.createElement('ul');
+    childrenContainer.className = 'children';
+    wrapper.appendChild(childrenContainer);
+
+    nodeDiv.addEventListener('click', () => {
+      wrapper.classList.toggle('expanded');
+    });
+
+    li.appendChild(nodeDiv);
+    li.appendChild(wrapper);
+
+    // Populate children based on schema
+    if (schema) {
+      if (schema.type === 'object' && schema.properties) {
+        for (const [prop, propSchema] of Object.entries(schema.properties)) {
+          childrenContainer.appendChild(buildNode(prop, propSchema));
+        }
+      } else if (schema.type === 'array' && schema.items) {
+        childrenContainer.appendChild(buildNode('[item]', schema.items));
+      } else if (schema.anyOf) {
+        schema.anyOf.forEach((variant, idx) => {
+          childrenContainer.appendChild(buildNode(`anyOf[${idx}]`, variant));
+        });
+      }
+    }
+
+    const container = document.createElement('ul');
+    container.appendChild(li);
+    return container;
   }
 
   // Clear all data
-  clearBtn.addEventListener('click', function() {
+  clearBtn.addEventListener('click', function () {
     if (confirm('Are you sure you want to clear all stored data (schemas and recordings)?')) {
-      chrome.storage.local.remove(['recordingLog'], function() {
+      chrome.storage.local.remove(['recordingLog'], function () {
         loadSchemas();
-        renderLog([]);
         generateBtn.disabled = true;
       });
     }
@@ -457,8 +623,7 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
       if (changes.recordingLog) {
-        const entries = changes.recordingLog.newValue || [];
-        renderLog(entries);
+        const entries = getDedupedEntries(changes.recordingLog.newValue || []);
         const hasData = entries.length > 0;
         generateBtn.disabled = !hasData;
         displayStats(entries);

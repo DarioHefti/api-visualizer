@@ -1,19 +1,19 @@
 // Prevent multiple injections on the same page
 if (!window.__API_TRACKER_VISUALIZER_INJECTED__) {
   window.__API_TRACKER_VISUALIZER_INJECTED__ = true;
-  
+
   console.log('🔧 API Data Visualizer content script loaded on:', window.location.href);
-  
+
   // ===== REQUEST INTERCEPTION FUNCTIONALITY (from good-request-tracking) =====
-  
+
   // (Injection moved to background script - will be triggered on recording start)
 
   // Listen for messages from the injected script (request interception)
   window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data.__FROM_PAGE__) return;
-    
+
     console.log('📨 Received message from injected script:', event.data.payload?.type, event.data.payload?.request?.url);
-    
+
     try {
       chrome.runtime.sendMessage({ type: 'intercepted', data: event.data.payload });
     } catch (error) {
@@ -46,11 +46,11 @@ async function initVisualizer() {
 
   // Retrieve settings from storage
   const origin = window.location.origin;
-  const { siteConfigs = {}, chatUrl, chatModel, apiKey } = await chrome.storage.local.get(['siteConfigs','chatUrl','chatModel','apiKey']);
+  const { siteConfigs = {}, chatUrl, chatModel, apiKey } = await chrome.storage.local.get(['siteConfigs', 'chatUrl', 'chatModel', 'apiKey']);
   const site = siteConfigs[origin] || {};
   const { apiBase, jwtToken: rawToken, apiDescription } = site;
   const jwtToken = rawToken ? rawToken.replace(/^Bearer\s+/i, '') : undefined;
-  
+
   if (!jwtToken || !apiDescription || !chatUrl || !chatModel || !apiKey) {
     console.warn('JWT token, API description, chat URL, or chat model missing.');
     alert('Missing required configuration! Please:\n1. Record some API requests\n2. Generate API description\n3. Configure AI settings\n4. Try again');
@@ -89,9 +89,9 @@ async function initVisualizer() {
         const body = {
           model: chatModel,
           messages: [
-            { 
-              role: 'system', 
-              content: 'You are a wizard at creating visual representations of data. You will always generate astonishing charts, graphs and diagrams.' 
+            {
+              role: 'system',
+              content: 'You are a wizard at creating visual representations of data. You will always generate astonishing charts, graphs and diagrams.'
             },
             { role: 'user', content: message }
           ],
@@ -108,7 +108,7 @@ async function initVisualizer() {
         const data = await res.json();
         const content = data.choices?.[0]?.message?.content;
         if (!content) {
-            throw new Error('Invalid response from AI endpoint');
+          throw new Error('Invalid response from AI endpoint');
         }
         return content;
       } catch (err) {
@@ -123,7 +123,7 @@ async function initVisualizer() {
   // API request implementation that adds the JWT token
   const apiRequest = async (url, options = {}) => {
     try {
-      const fullUrl = apiBase ? apiBase.replace(/\/$/, '') + url : url;
+      const fullUrl = apiBase ? new URL(url, apiBase).toString() : url;
       const response = await fetch(fullUrl, {
         ...options,
         headers: {

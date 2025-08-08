@@ -2,31 +2,31 @@
 // Browser-compatible version of the schema generator from good-request-tracking
 
 const utils = {
-  isObject: function(value) {
+  isObject: function (value) {
     return (null !== value && typeof value === typeof {} && !this.isArray(value));
   },
-  
-  isNumber: function(value) {
+
+  isNumber: function (value) {
     return !this.isArray(value) && (value - parseFloat(value) + 1) >= 0;
   },
-  
-  isArray: function(value) {
+
+  isArray: function (value) {
     return (value instanceof Array);
   },
-  
-  isString: function(value) {
+
+  isString: function (value) {
     return (typeof value === typeof '');
   },
-  
-  isNull: function(value) {
+
+  isNull: function (value) {
     return (null === value);
   },
-  
-  isBoolean: function(value) {
+
+  isBoolean: function (value) {
     return (value === true || value === false);
   },
-  
-  getType: function(data) {
+
+  getType: function (data) {
     if (this.isObject(data)) {
       return 'object';
     } else if (this.isArray(data)) {
@@ -48,18 +48,18 @@ function AST() {
   this.tree = {};
 }
 
-AST.prototype.buildPrimitive = function(tree, node) {
+AST.prototype.buildPrimitive = function (tree, node) {
   tree.type = utils.getType(node);
   if (tree.type === 'string') {
     tree.minLength = (node.length > 0) ? 1 : 0;
   }
-  
+
   if (node !== null && typeof node !== 'undefined') {
     tree.required = true;
   }
 };
 
-AST.prototype.buildObjectTree = function(tree, node) {
+AST.prototype.buildObjectTree = function (tree, node) {
   tree.type = tree.type || 'object';
   tree.children = tree.children || {};
   for (var i in node) {
@@ -76,21 +76,21 @@ AST.prototype.buildObjectTree = function(tree, node) {
   }
 };
 
-AST.prototype.buildArrayTree = function(tree, node) {
+AST.prototype.buildArrayTree = function (tree, node) {
   tree.type = 'array';
   tree.children = {};
-  
+
   if (node.length === 0) {
     tree.uniqueItems = false;
     tree.minItems = 0;
     return;
   }
-  
+
   var first = node[0];
   if (utils.isObject(first)) {
     tree.uniqueItems = true;
     tree.minItems = 1;
-    
+
     var mergedObject = {};
     for (var idx = 0; idx < node.length; idx++) {
       if (utils.isObject(node[idx])) {
@@ -103,10 +103,10 @@ AST.prototype.buildArrayTree = function(tree, node) {
         }
       }
     }
-    
+
     return this.buildObjectTree(tree, mergedObject);
   }
-  
+
   for (var i = 0; i < node.length; i++) {
     if (utils.isObject(node[i])) {
       tree.children[i] = {};
@@ -131,7 +131,7 @@ AST.prototype.buildArrayTree = function(tree, node) {
   }
 };
 
-AST.prototype.build = function(json) {
+AST.prototype.build = function (json) {
   if (json instanceof Array) {
     this.buildArrayTree(this.tree, json);
   } else {
@@ -144,7 +144,7 @@ function Compiler() {
   this.schema = {};
 }
 
-Compiler.prototype.generate = function(tree, schema, parent) {
+Compiler.prototype.generate = function (tree, schema, parent) {
   for (var i in tree.children) {
     var child = tree.children[i];
     if (child.type === 'object') {
@@ -179,11 +179,11 @@ Compiler.prototype.generate = function(tree, schema, parent) {
       } else {
         schema[i].type = child.type || 'string';
       }
-      
+
       if (child.minLength) {
         schema[i].minLength = child.minLength;
       }
-      
+
       if (child.required) {
         if (parent.items && utils.isArray(parent.items.required)) {
           parent.items.required.push(i);
@@ -195,7 +195,7 @@ Compiler.prototype.generate = function(tree, schema, parent) {
   }
 };
 
-Compiler.prototype.compile = function(tree) {
+Compiler.prototype.compile = function (tree) {
   if (tree.type === 'object') {
     this.schema = {
       description: '',
@@ -220,7 +220,7 @@ Compiler.prototype.compile = function(tree) {
   }
 };
 
-// Main schema generator function
+// Main schema generator function (advanced)
 function jsonToSchema(json) {
   var compiler = new Compiler();
   var ast = new AST();
@@ -231,38 +231,6 @@ function jsonToSchema(json) {
 
 // ===== END EMBEDDED SCHEMA GENERATOR LIBRARY =====
 
-// ===== Simplified JSON Schema Generator =====
-function _getType(val) {
-  if (val === null) return 'null';
-  if (Array.isArray(val)) return 'array';
-  return typeof val; // 'string', 'number', 'boolean', 'object', 'undefined'
-}
-
-function jsonToSchema(data) {
-  const t = _getType(data);
-  if (t === 'object') {
-    const properties = {};
-    for (const key in data) {
-      properties[key] = jsonToSchema(data[key]);
-    }
-    return { type: 'object', properties };
-  }
-  if (t === 'array') {
-    if (data.length === 0) {
-      return { type: 'array', items: {} };
-    }
-    const first = data[0];
-    const itemType = _getType(first);
-    if (itemType === 'object') {
-      return { type: 'array', items: jsonToSchema(first) };
-    }
-    return { type: 'array', items: { type: itemType } };
-  }
-  // primitives: string, number, boolean, null, undefined
-  return { type: t };
-}
-// ===== End Simplified JSON Schema Generator =====
-
 // ===== RECORDING FUNCTIONALITY (from good-vizualization) =====
 let isRecording = false;
 let recordingOrigin = '';
@@ -270,31 +238,104 @@ let recordingLog = [];
 let debuggerTabId = null;
 let pendingRequests = new Map();
 
-// ===== Common filter helper =====
-function shouldTrack(details, { requireResponse = false, requireJsonHeader = false } = {}) {
-  if (!isRecording) return false;
-  if (details.method !== 'GET') return false;
-  if (details.url.startsWith('chrome-extension://')) return false;
-  // Skip typical static asset extensions
-  if (/\.(?:json|js|mjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)(?:\?|$)/i.test(details.url)) return false;
-  if (details.initiator && details.initiator.startsWith('chrome-extension://')) return false;
 
-  if (requireResponse) {
-    if (details.statusCode !== 200) return false;
-    if (requireJsonHeader) {
-      const ctHeader = (details.responseHeaders || []).find(h => h.name.toLowerCase() === 'content-type');
-      if (!ctHeader) return false;
-      if (!/^application\/json\b/i.test(ctHeader.value)) return false;
-    }
-  }
-  return true;
-}
 
 
 // Helper to persist the log
 function persistLog() {
   console.log(recordingLog);
   chrome.storage.local.set({ recordingLog });
+}
+
+// Simple JSON content-type check
+function isJsonContentType(value = '') {
+  return /^application\/(?:json|[a-z0-9.+-]*\+json)\b/i.test(value);
+}
+
+// Normalize URL against current recording origin to avoid duplicates
+function toAbsoluteUrl(inputUrl) {
+  try {
+    const u = new URL(inputUrl, recordingOrigin || undefined);
+    return u.toString();
+  } catch {
+    return inputUrl;
+  }
+}
+
+// Canonical key: origin + pathname (no query/hash) + method
+function canonicalKeyFor(inputUrl, method = 'GET') {
+  try {
+    const u = new URL(inputUrl, recordingOrigin || undefined);
+    return `${u.origin}${u.pathname}::${method.toUpperCase()}`;
+  } catch {
+    return `${inputUrl}::${method.toUpperCase()}`;
+  }
+}
+
+// Heuristics to ignore framework/static navigation endpoints even if JSON
+const DEFAULT_IGNORED_PATTERNS = [
+  // Common static directories
+  /(^|\/)assets(\/|$)/i,
+  /(^|\/)static(\/|$)/i,
+  /(^|\/)i18n(\/|$)/i,
+  /(^|\/)locales?(\/|$)/i,
+  /(^|\/)translations?(\/|$)/i,
+  // Framework build outputs
+  /(^|\/)_(?:next)(\/|$)/i,
+  /(^|\/)\.(?:next|vite)(\/|$)/i,
+  /(^|\/)webpack(\/|$)/i,
+  /(^|\/)sockjs-node(\/|$)/i,
+  // Service workers/manifests
+  /(^|\/)ngsw(\/|\.|$)/i,
+  /(^|\/)service-worker(\/|\.|$)/i,
+  /(^|\/)manifest\.json$/i,
+  /(^|\/)asset-manifest\.json$/i
+];
+
+function isIgnoredUrl(inputUrl) {
+  try {
+    const u = new URL(inputUrl, recordingOrigin || undefined);
+    const path = u.pathname || '';
+    return DEFAULT_IGNORED_PATTERNS.some((re) => re.test(path));
+  } catch {
+    return DEFAULT_IGNORED_PATTERNS.some((re) => re.test(String(inputUrl || '')));
+  }
+}
+
+// Merge two JSON Schemas conservatively
+function mergeSchemas(schemaA, schemaB) {
+  if (!schemaA) return schemaB;
+  if (!schemaB) return schemaA;
+
+  // If types differ, express union
+  if (schemaA.type && schemaB.type && schemaA.type !== schemaB.type) {
+    // Avoid nesting anyOf inside anyOf repeatedly
+    const toArray = (s) => (s.anyOf ? s.anyOf : [s]);
+    return { anyOf: [...toArray(schemaA), ...toArray(schemaB)] };
+  }
+
+  // Objects: merge properties and intersect required
+  if (schemaA.type === 'object' && schemaB.type === 'object') {
+    const propsA = schemaA.properties || {};
+    const propsB = schemaB.properties || {};
+    const keys = new Set([...Object.keys(propsA), ...Object.keys(propsB)]);
+    const properties = {};
+    for (const key of keys) {
+      properties[key] = mergeSchemas(propsA[key], propsB[key]);
+    }
+    const reqA = new Set(schemaA.required || []);
+    const reqB = new Set(schemaB.required || []);
+    const required = [...[...keys].filter(k => reqA.has(k) && reqB.has(k))];
+    return { type: 'object', properties, ...(required.length ? { required } : {}) };
+  }
+
+  // Arrays: merge items
+  if (schemaA.type === 'array' && schemaB.type === 'array') {
+    return { type: 'array', items: mergeSchemas(schemaA.items, schemaB.items) };
+  }
+
+  // Prefer the more detailed schema if available
+  return schemaA.properties || schemaA.items ? schemaA : schemaB;
 }
 
 // ===== SCHEMA TRACKING FUNCTIONALITY (from good-request-tracking) =====
@@ -306,65 +347,45 @@ const emojiMap = {
 
 function logEntry(type, info) {
   const emoji = emojiMap[type] || '❔';
-  const url = info.url || 'n/a';
-  const method = info.method || '';
+  const url = toAbsoluteUrl(info.url || '');
+  const method = (info.method || 'GET').toUpperCase();
   console.log(`${emoji} ${type.toUpperCase()} ${method} ${url}`);
-  
-  // Enhanced schema generation for responses
+
+  // Only process JSON responses
   if (type === 'fetch' || type === 'xhr') {
-    if (info.response && info.response.body) {
-      const body = info.response.body;
-      const contentType = info.response.headers?.['content-type'] || '';
-      
-      console.log(`🔍 Processing response body for ${url}:`, {
-        bodyType: typeof body,
-        bodyLength: body.length,
-        contentType,
-        isString: typeof body === 'string'
-      });
-      
-      // Try to parse JSON responses
-      if (typeof body === 'string' && body.trim()) {
-        try {
-          const json = JSON.parse(body);
-          const schema = jsonToSchema(json);
-          console.log(`✅ JSON schema generated for ${url}:`, schema);
-          addSchemaEntry(url, schema);
-        } catch (parseError) {
-          console.log(`❌ Failed to parse JSON for ${url}:`, parseError.message);
-          
-          // Try to detect other structured data formats
-          if (body.trim().startsWith('<') && body.includes('>')) {
-            const schema = {
-              type: 'xml_or_html',
-              length: body.length,
-              rootElement: body.match(/<([^>\s]+)/)?.[1] || 'unknown'
-            };
-            addSchemaEntry(url, schema);
-          } else if (contentType.includes('text/plain') || contentType.includes('text/')) {
-            const schema = {
-              type: 'text',
-              length: body.length,
-              lines: body.split('\n').length,
-              contentType
-            };
-            addSchemaEntry(url, schema);
-          }
-        }
+    const contentType = info.response?.headers?.['content-type'] || info.response?.headers?.['Content-Type'] || '';
+    if (!isJsonContentType(contentType)) {
+      return; // ignore non-JSON
+    }
+
+    if (info.response && typeof info.response.body === 'string' && info.response.body.trim()) {
+      try {
+        const json = JSON.parse(info.response.body);
+        const schema = jsonToSchema(json);
+        addSchemaEntry(url, schema, method);
+      } catch (parseError) {
+        // ignore invalid JSON
       }
-    } else {
-      console.log(`ℹ️ No response body to process for ${url}`);
     }
   }
 }
 
-function addSchemaEntry(url, schema) {
-  // Store schema directly on the recording log instead of a separate collection
-  const matchIdx = recordingLog.findIndex(e => e.url === url && e.method === 'GET');
-  if (matchIdx !== -1) {
+function addSchemaEntry(url, schema, method = 'GET') {
+  const absUrl = toAbsoluteUrl(url);
+  const methodUp = (method || 'GET').toUpperCase();
+  const key = canonicalKeyFor(absUrl, methodUp);
+  const timestamp = new Date().toISOString();
+
+  // Find by canonical key
+  const matchIdx = recordingLog.findIndex(e => e.canonicalKey === key);
+  if (matchIdx !== -1 && typeof recordingLog[matchIdx].response === 'object') {
+    recordingLog[matchIdx].response = mergeSchemas(recordingLog[matchIdx].response, schema);
+    recordingLog[matchIdx].timestamp = timestamp;
+  } else if (matchIdx !== -1) {
     recordingLog[matchIdx].response = schema;
+    recordingLog[matchIdx].timestamp = timestamp;
   } else {
-    recordingLog.push({ url, method: 'GET', response: schema, timestamp: new Date().toISOString() });
+    recordingLog.push({ url: absUrl, method: methodUp, canonicalKey: key, response: schema, timestamp });
   }
   persistLog();
 }
@@ -372,30 +393,32 @@ function addSchemaEntry(url, schema) {
 // ===== MESSAGE HANDLERS =====
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('📨 Background received message:', msg.type || msg.action, msg.data?.type, msg.data?.request?.url);
-  
+
   // Handle intercepted requests (from injected script)
   if (msg.type === 'intercepted') {
     if (!isRecording) return; // Ignore when not actively recording
     try {
-      logEntry(msg.data.type, msg.data.request ? { ...msg.data.request, response: msg.data.response, data: msg.data.data } : msg.data);
+      const payload = msg.data;
+      const method = (payload.request?.method || 'GET').toUpperCase();
+      const url = toAbsoluteUrl(payload.request?.url || payload.url || '');
+      const resp = payload.response || {};
+      const ct = resp.headers?.['content-type'] || resp.headers?.['Content-Type'] || '';
+      if (method === 'OPTIONS') {
+        return; // skip CORS preflights
+      }
+      if (isIgnoredUrl(url)) {
+        return; // skip framework/static endpoints
+      }
+      if (!isJsonContentType(ct)) {
+        return; // JSON only
+      }
+      logEntry(payload.type, { ...payload.request, url, method, response: resp });
     } catch (error) {
       console.error('❌ Error processing intercepted message:', error);
     }
     return;
   }
-  
-  // Handle script injection requests
-  if (msg.type === 'inject_script' && sender.tab) {
-    console.log('🔧 Injecting script into tab:', sender.tab.id);
-    chrome.scripting.executeScript({ 
-      target: { tabId: sender.tab.id }, 
-      files: ['injected.js'], 
-      world: 'MAIN' 
-    })
-      .then(() => console.log('✅ Script injection successful'))
-      .catch(err => console.warn('❌ Failed to inject script:', err));
-    return;
-  }
+
 
   // Handle recording control messages
   switch (msg.action) {
@@ -408,7 +431,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.storage.local.set({ recordingActive: true, recordingLog: [] });
       persistLog();
       console.log('[Recorder] Started for origin', recordingOrigin);
-      
+
       // Inject fetch/XHR interceptor into the page when recording starts
       chrome.scripting.executeScript({
         target: { tabId: debuggerTabId },
@@ -419,38 +442,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }).catch(err => {
         console.warn('[Recorder] Failed to inject interceptor:', err);
       });
-      
+
       // Attach debugger to capture response bodies
       chrome.debugger.attach({ tabId: debuggerTabId }, "1.3", () => {
         if (chrome.runtime.lastError) {
           console.error('[Recorder] Failed to attach debugger:', chrome.runtime.lastError.message);
         } else {
           console.log('[Recorder] Debugger attached');
-          chrome.debugger.sendCommand({ tabId: debuggerTabId }, "Runtime.enable", {}, () => {
+          chrome.debugger.sendCommand({ tabId: debuggerTabId }, 'Runtime.enable', {}, () => {
             console.log('[Recorder] Runtime domain enabled');
           });
-          
-          chrome.debugger.sendCommand({ tabId: debuggerTabId }, "Network.enable", { 
-            maxResourceBufferSize: 10000000, 
-            maxPostDataSize: 10000000 
+          chrome.debugger.sendCommand({ tabId: debuggerTabId }, 'Network.enable', {
+            maxResourceBufferSize: 10000000,
+            maxPostDataSize: 10000000
           }, () => {
             if (chrome.runtime.lastError) {
               console.error('[Recorder] Failed to enable Network domain:', chrome.runtime.lastError.message);
             } else {
               console.log('[Recorder] Network domain enabled');
-              chrome.debugger.sendCommand({ tabId: debuggerTabId }, "Network.setCacheDisabled", { cacheDisabled: true });
+              chrome.debugger.sendCommand({ tabId: debuggerTabId }, 'Network.setCacheDisabled', { cacheDisabled: true });
             }
           });
         }
       });
-      
+
       sendResponse({ ok: true });
       break;
     }
-    
+
     case 'stopRecording': {
       isRecording = false;
-      
+
       // Detach debugger
       if (debuggerTabId) {
         chrome.debugger.detach({ tabId: debuggerTabId }, () => {
@@ -462,13 +484,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         debuggerTabId = null;
       }
-      
+
       chrome.storage.local.set({ recordingActive: false });
       console.log('[Recorder] Stopped');
       sendResponse({ ok: true });
       break;
     }
-    
+
     default:
       if (msg.action === 'test') {
         console.log('[Background] Test message received');
@@ -476,7 +498,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       break;
   }
-  
+
   return true; // keep messaging channel open if async needed
 });
 
@@ -485,7 +507,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Capture auth headers during recording
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    if (!isRecording || details.method !== 'GET') return;
+    if (!isRecording) return;
 
     const authHeader = (details.requestHeaders || []).find(h => h.name.toLowerCase() === 'authorization');
     const apiKeyHeader = (details.requestHeaders || []).find(h => h.name.toLowerCase() === 'x-api-key');
@@ -507,186 +529,98 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 );
 
 
-// Capture completed requests during recording
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    console.log(`[Recorder] <- ${details.statusCode} ${details.url}`);
-    if (!shouldTrack(details, { requireResponse: true, requireJsonHeader: true })) return;
+// Remove fallback re-fetch to avoid replaying requests
+// (Previously used onCompleted to refetch and parse JSON)
+// chrome.webRequest.onCompleted.addListener( ... ) — removed
 
-    
-    // Ensure there's an entry for this request
-    let idx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET');
-    if (idx === -1) {
-      recordingLog.push({ url: details.url, method: details.method, response: '(pending...)' });
-      idx = recordingLog.length - 1;
-    }
-
-    console.log('[Recorder] Fetching response body (fallback)');
-
-    chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
-      const site = siteConfigs[recordingOrigin] || {};
-      const authToken = site.jwtToken || '';
-
-      fetch(details.url, {
-        method: 'GET',
-        headers: {
-          ...(authToken ? { 'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
-          'Content-Type': 'application/json'
-        }
-      }).then(response => response.json())
-        .then(data => {
-          console.log('[Recorder] Response captured, generating schema:' + details.url);
-          const schema = jsonToSchema(data);
-          recordingLog[idx].response = schema;
-          persistLog();
-        })
-        .catch(err => {
-          console.error('[Recorder] Fallback fetch failed:', err.message);
-          recordingLog[idx].response = '(fallback fetch failed: ' + err.message + ')';
-          persistLog();
-        });
-    });
-  },
-  { urls: ['<all_urls>'] },
-  ['responseHeaders']
-);
-
-// General network monitoring for schema generation
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    if (!details.url.startsWith('http')) return;
-    // Log general network requests for schema tracking
-    console.log(`🌍 Network request completed: ${details.method} ${details.url} (${details.statusCode})`);
-  },
-  { urls: ['<all_urls>'] }
-);
-
-// Enhanced webRequest response body capture for schema generation
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    // Only for http/https and not extension resources
-    if (!details.url.startsWith('http') || details.url.includes('extension://')) return;
-    
-    // Skip certain resource types that won't have JSON responses
-    const skipTypes = ['image', 'media', 'font', 'stylesheet', 'websocket', 'other'];
-    if (skipTypes.includes(details.type)) return;
-    
-    // Skip very large requests to avoid memory issues
-    if (details.requestBody && details.requestBody.raw) {
-      const totalSize = details.requestBody.raw.reduce((sum, part) => sum + (part.bytes?.byteLength || 0), 0);
-      if (totalSize > 10 * 1024 * 1024) return; // Skip > 10MB
-    }
-    
-    let filter;
-    try {
-      filter = chrome.webRequest.filterResponseData(details.requestId);
-    } catch (error) {
-      console.log(`⚠️ Cannot create filter for ${details.url}: ${error.message}`);
-      return;
-    }
-    
-    const chunks = [];
-    let totalSize = 0;
-    const maxSize = 5 * 1024 * 1024; // 5MB limit
-    let hasError = false;
-    
-    filter.ondata = (event) => {
-      try {
-        totalSize += event.data.byteLength;
-        if (totalSize > maxSize) {
-          filter.write(event.data);
-          filter.disconnect();
-          return;
-        }
-        
-        chunks.push(new Uint8Array(event.data));
-        filter.write(event.data);
-      } catch (error) {
-        console.warn(`❌ Error in ondata for ${details.url}:`, error);
-        hasError = true;
-        filter.write(event.data);
-      }
-    };
-    
-    filter.onerror = (event) => {
-      console.warn(`❌ Filter error for ${details.url}:`, event);
-      hasError = true;
-    };
-    
-    filter.onend = () => {
-      try {
-        filter.disconnect();
-        
-        if (hasError || chunks.length === 0) return;
-        
-        const responseBody = arrayBufferToString(chunks);
-        
-        // Try to parse as JSON for schema generation
-        if (responseBody.trim()) {
-          try {
-            const jsonData = JSON.parse(responseBody);
-            const schema = jsonToSchema(jsonData);
-            console.log(`✅ WebRequest schema generated for ${details.url}`);
-            addSchemaEntry(details.url, schema);
-          } catch (parseError) {
-            // Try to detect other structured formats
-            if (responseBody.trim().startsWith('<') && responseBody.includes('>')) {
-              const schema = {
-                type: 'xml_or_html',
-                length: responseBody.length,
-                source: 'webRequest',
-                rootElement: responseBody.match(/<([^>\s/]+)/)?.[1] || 'unknown'
-              };
-              addSchemaEntry(details.url, schema);
-            } else if (responseBody.length < 1000) {
-              const schema = {
-                type: 'text',
-                length: responseBody.length,
-                source: 'webRequest',
-                preview: responseBody.substring(0, 200)
-              };
-              addSchemaEntry(details.url, schema);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`❌ Error processing webRequest response for ${details.url}:`, error);
-      }
-    };
-  },
-  { urls: ['<all_urls>'] }
-);
-
-function arrayBufferToString(chunks) {
-  let totalLength = 0;
-  for (const chunk of chunks) {
-    totalLength += chunk.byteLength;
-  }
-  
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  
-  try {
-    return new TextDecoder('utf-8').decode(merged);
-  } catch (error) {
-    console.warn('Failed to decode as UTF-8, trying latin1');
-    return new TextDecoder('latin1').decode(merged);
-  }
-}
 
 // Chrome DevTools Protocol debugger events
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (!isRecording || source.tabId !== debuggerTabId) return;
-  
-  if (method === 'Network.loadingFailed') {
-    console.log('[Recorder] Network.loadingFailed:', params.requestId, params.errorText);
+
+  // Track request metadata
+  if (method === 'Network.requestWillBeSent') {
+    const { requestId, request, type } = params;
+    // Only track XHR/Fetch/documents that could carry JSON
+    const isRelevantType = type === 'XHR' || type === 'Fetch';
+    if (!isRelevantType) return;
+    pendingRequests.set(requestId, {
+      url: toAbsoluteUrl(request.url),
+      method: (request.method || 'GET').toUpperCase(),
+      hasJson: false
+    });
     return;
   }
-  
+
+  if (method === 'Network.responseReceived') {
+    const { requestId, response } = params;
+    const meta = pendingRequests.get(requestId);
+    if (!meta) return;
+    const ct = response.headers && (response.headers['content-type'] || response.headers['Content-Type']) || '';
+    const mime = response.mimeType || '';
+    const looksJson = isJsonContentType(ct) || isJsonContentType(mime);
+    // Only mark as JSON to retrieve body later
+    if (looksJson) {
+      meta.hasJson = true;
+      pendingRequests.set(requestId, meta);
+    }
+    return;
+  }
+
+  if (method === 'Network.loadingFinished') {
+    const { requestId } = params;
+    const meta = pendingRequests.get(requestId);
+    if (!meta || !meta.hasJson) {
+      // Clean up any non-JSON tracked request
+      pendingRequests.delete(requestId);
+      return;
+    }
+
+    // Skip framework/static endpoints
+    if (meta.method === 'OPTIONS' || isIgnoredUrl(meta.url)) {
+      pendingRequests.delete(requestId);
+      return;
+    }
+
+    // Get response body without replaying
+    chrome.debugger.sendCommand({ tabId: debuggerTabId }, 'Network.getResponseBody', { requestId }, (bodyResult) => {
+      try {
+        if (!bodyResult) return;
+        let bodyText = bodyResult.body || '';
+        if (bodyResult.base64Encoded) {
+          // Decode base64
+          try {
+            bodyText = atob(bodyText);
+          } catch (e) {
+            console.warn('Failed to decode base64 body');
+            pendingRequests.delete(requestId);
+            return;
+          }
+        }
+        if (!bodyText.trim()) {
+          pendingRequests.delete(requestId);
+          return;
+        }
+        try {
+          const json = JSON.parse(bodyText);
+          const schema = jsonToSchema(json);
+          addSchemaEntry(meta.url, schema, meta.method || 'GET');
+        } catch (e) {
+          // Not valid JSON; ignore
+        }
+      } finally {
+        pendingRequests.delete(requestId);
+      }
+    });
+    return;
+  }
+
+  if (method === 'Network.loadingFailed') {
+    console.log('[Recorder] Network.loadingFailed:', params.requestId, params.errorText);
+    pendingRequests.delete(params.requestId);
+    return;
+  }
+
   if (method === 'Network.requestServedFromCache') {
     console.log('[Recorder] Network.requestServedFromCache:', params.requestId);
     return;
