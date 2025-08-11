@@ -5,304 +5,161 @@
   <meta charset="utf-8">
   <title>API Data Visualizer</title>
   <style>
-    :root {
-      --bg: #f7f8fa;
-      --text: #1f2937;
-      --subtext: #4b5563;
-      --card: #ffffff;
-      --border: #e5e7eb;
-      --primary: #2563eb;
-      --primary-600: #1d4ed8;
-      --danger: #ef4444;
-      --danger-600: #dc2626;
-      --success: #22c55e;
-      --success-600: #16a34a;
-      --accent: #8b5cf6;
-      --muted: #9ca3af;
-      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-    }
-
-    [data-theme="dark"] {
-      --bg: #0b1020;
-      --text: #e5e7eb;
-      --subtext: #9ca3af;
-      --card: #0f172a;
-      --border: #1f2a44;
-      --primary: #60a5fa;
-      --primary-600: #3b82f6;
-      --danger: #f87171;
-      --danger-600: #ef4444;
-      --success: #34d399;
-      --success-600: #10b981;
-      --accent: #a78bfa;
-      --muted: #94a3b8;
-      --shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-    }
-
-    html,
     body {
-      margin: 0;
-      padding: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      font-size: 12px;
-    }
-
-    .container {
       width: 600px;
       max-height: 600px;
-      box-sizing: border-box;
-      padding: 0 12px 12px 12px;
+      padding: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
     }
 
     .header {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      padding: 14px 14px;
-      margin: 0 0 12px 0;
-      border-radius: 10px;
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(139, 92, 246, 0.08));
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-    }
-
-    .title {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
     }
 
     h1 {
       margin: 0;
       font-size: 16px;
-      color: var(--text);
-      letter-spacing: 0.2px;
-    }
-
-    .subtitle {
-      color: var(--subtext);
-      font-size: 11px;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .theme-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--subtext);
-      border-radius: 999px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .theme-toggle input {
-      display: none;
+      color: #333;
     }
 
     .controls {
       display: flex;
-      gap: 6px;
+      gap: 5px;
+      margin-bottom: 10px;
     }
 
     button {
       padding: 8px 12px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
+      border: 1px solid #ddd;
+      background: #f9f9f9;
       cursor: pointer;
-      border-radius: 8px;
+      border-radius: 4px;
       font-size: 11px;
-      transition: all 0.15s ease;
-      box-shadow: var(--shadow);
     }
 
     button:hover {
-      transform: translateY(-1px);
-    }
-
-    button:active {
-      transform: translateY(0);
+      background: #efefef;
     }
 
     button:disabled {
-      background: rgba(148, 163, 184, 0.12);
-      color: var(--muted);
+      background: #f5f5f5;
+      color: #999;
       cursor: not-allowed;
-      box-shadow: none;
     }
 
-    .btn-primary {
-      background: var(--primary);
-      border-color: var(--primary-600);
-      color: #fff;
+    .record-btn {
+      background: #4CAF50;
+      color: white;
+      border-color: #45a049;
     }
 
-    .btn-primary:hover:not(:disabled) {
-      background: var(--primary-600);
+    .record-btn:hover:not(:disabled) {
+      background: #45a049;
     }
 
-    .btn-danger {
-      background: var(--danger);
-      border-color: var(--danger-600);
-      color: #fff;
+    .stop-btn {
+      background: #f44336;
+      color: white;
+      border-color: #da190b;
     }
 
-    .btn-danger:hover:not(:disabled) {
-      background: var(--danger-600);
+    .stop-btn:hover:not(:disabled) {
+      background: #da190b;
     }
 
-    .btn-success {
-      background: var(--success);
-      border-color: var(--success-600);
-      color: #0b1020;
+    .generate-btn {
+      background: #2196F3;
+      color: white;
+      border-color: #1976D2;
     }
 
-    .btn-success:hover:not(:disabled) {
-      background: var(--success-600);
-      color: #fff;
+    .generate-btn:hover:not(:disabled) {
+      background: #1976D2;
     }
 
-    .btn-accent {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+    .clear-btn {
+      background: #ff4444;
+      color: white;
+      border-color: #cc3333;
     }
 
-    .section {
-      margin-bottom: 14px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--card);
-      box-shadow: var(--shadow);
-    }
-
-    .section-title {
-      font-weight: 700;
-      margin-bottom: 10px;
-      color: var(--text);
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    .clear-btn:hover:not(:disabled) {
+      background: #cc3333;
     }
 
     .stats {
-      background: rgba(148, 163, 184, 0.12);
+      background: #f5f5f5;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 11px;
+    }
+
+    .section {
+      margin-bottom: 20px;
       padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      font-size: 11px;
-      color: var(--subtext);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      border: 1px solid #ddd;
+      border-radius: 4px;
     }
 
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: rgba(37, 99, 235, 0.12);
-      color: var(--primary);
-      font-weight: 600;
-      font-size: 10px;
-      border: 1px solid var(--border);
-    }
-
-    .divider {
-      height: 1px;
-      background-color: var(--border);
-      margin: 12px 0;
-    }
-
-    details {
-      margin-bottom: 12px;
-      border: 1px dashed var(--border);
-      border-radius: 8px;
-      background: var(--card);
-    }
-
-    summary {
-      font-weight: 600;
-      cursor: pointer;
-      margin: 0;
-      padding: 8px 10px;
-      background: rgba(148, 163, 184, 0.12);
-      border-radius: 8px 8px 0 0;
-    }
-
-    label {
-      display: block;
-      font-weight: 600;
-      margin: 8px 0 6px 0;
-      font-size: 11px;
-      color: var(--subtext);
-    }
-
-    input,
-    textarea {
-      width: 100%;
-      padding: 8px 10px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      border-radius: 8px;
-      font-size: 11px;
+    .section-title {
+      font-weight: bold;
       margin-bottom: 10px;
-      box-sizing: border-box;
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
     }
 
-    /* Schema list */
     .no-data {
       text-align: center;
-      color: var(--muted);
-      padding: 16px;
+      color: #666;
+      padding: 15px;
       font-style: italic;
     }
 
-    .url-item {
-      cursor: pointer;
-      color: var(--primary);
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
+    .log-preview {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 8px;
+      margin: 10px 0;
     }
 
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      padding: 10px;
-      background: var(--card);
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    .log-preview table {
+      width: 100%;
+      font-size: 10px;
+      border-collapse: collapse;
     }
 
-    .card:hover {
-      transform: translateY(-1px);
-      box-shadow: var(--shadow);
+    .log-preview th,
+    .log-preview td {
+      text-align: left;
+      padding: 4px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .log-preview th {
+      background: #f0f0f0;
+      font-weight: bold;
     }
 
     /* Spinner */
     .spinner {
-      border: 3px solid rgba(148, 163, 184, 0.2);
-      border-top: 3px solid var(--primary);
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
       border-radius: 50%;
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       animation: spin 1s linear infinite;
+      margin: 10px auto;
     }
 
     @keyframes spin {
@@ -315,22 +172,79 @@
       }
     }
 
-    .spinner-wrap {
-      display: none;
-      margin: 10px auto;
-      justify-content: center;
+    /* Button highlight after generation */
+    .highlight {
+      animation: pulse 1.5s infinite;
     }
 
-    /* Modal */
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+      }
+
+      70% {
+        box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+      }
+    }
+
+    .divider {
+      height: 1px;
+      background-color: #ccc;
+      margin: 15px 0;
+    }
+
+    /* AI Settings collapsible */
+    details {
+      margin-bottom: 15px;
+    }
+
+    summary {
+      font-weight: 600;
+      cursor: pointer;
+      margin: 8px 0;
+      padding: 5px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+
+    summary:hover {
+      background: #e0e0e0;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin: 8px 0 4px 0;
+      font-size: 11px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+    }
+
+    /* Schema tree modal */
     .modal {
       position: fixed;
-      inset: 0;
-      background: rgba(2, 6, 23, 0.45);
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      backdrop-filter: blur(2px);
     }
 
     .modal.open {
@@ -340,23 +254,22 @@
     .modal-content {
       width: 560px;
       max-height: 520px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      box-shadow: var(--shadow);
     }
 
     .modal-header {
-      padding: 10px 12px;
-      background: rgba(148, 163, 184, 0.12);
-      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
+      background: #f6f6f6;
+      border-bottom: 1px solid #eee;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-weight: 700;
+      font-weight: 600;
     }
 
     .modal-body {
@@ -388,92 +301,62 @@
       display: block;
     }
 
-    /* Highlight pulse */
-    .highlight {
-      animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
-      0% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
-      }
-
-      70% {
-        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
-      }
-
-      100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-      }
+    .url-item {
+      cursor: pointer;
+      color: #0066cc;
+      text-decoration: underline;
     }
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="title">
-        <h1>🔍📊 API Data Visualizer</h1>
-        <div class="subtitle">Record API requests, generate schemas, and build AI dashboards</div>
-      </div>
-      <div class="header-actions">
-        <label class="theme-toggle" title="Toggle theme">
-          <input type="checkbox" id="themeToggle" />
-          <span>🌙 Theme</span>
-        </label>
-        <div class="controls">
-          <button id="clear" class="btn-danger">Clear All</button>
-        </div>
-      </div>
+  <div class="header">
+    <h1>🔍📊 API Data Visualizer</h1>
+    <div class="controls">
+      <button id="clear" class="clear-btn">Clear All</button>
+    </div>
+  </div>
+
+  <!-- AI Settings collapsible -->
+  <details id="aiSettings">
+    <summary>AI Settings</summary>
+    <label for="chatUrl">Chat Completion Endpoint</label>
+    <input type="text" id="chatUrl" placeholder="https://api.openai.com/v1/chat/completions" />
+
+    <label for="apiKey">API Key for Chat Completion</label>
+    <input type="text" id="apiKey" placeholder="Paste your API key" />
+
+    <label for="chatModel">Chat Model</label>
+    <input type="text" id="chatModel" placeholder="gpt-4" />
+
+    <button id="saveBtn">Save Credentials</button>
+  </details>
+
+  <div class="divider"></div>
+
+  <!-- Recording Section -->
+  <div class="section">
+    <div class="section-title">📡 API Request Recording</div>
+    <div class="controls">
+      <button id="recordBtn" class="record-btn">🔴 Start Recording</button>
+      <button id="stopBtn" class="stop-btn" disabled>⏹️ Stop Recording</button>
     </div>
 
-    <!-- AI Settings collapsible -->
-    <details id="aiSettings">
-      <summary>AI Settings</summary>
-      <div style="padding: 8px 10px 10px 10px;">
-        <label for="chatUrl">Chat Completion Endpoint</label>
-        <input type="text" id="chatUrl" placeholder="https://api.openai.com/v1/chat/completions" />
+    <div id="stats" class="stats"></div>
+    <div id="logPreview" class="log-preview"></div>
 
-        <label for="apiKey">API Key for Chat Completion</label>
-        <input type="text" id="apiKey" placeholder="Paste your API key" />
-
-        <label for="chatModel">Chat Model</label>
-        <input type="text" id="chatModel" placeholder="gpt-4" />
-
-        <button id="saveBtn" class="btn-primary">Save Credentials</button>
-      </div>
-    </details>
-
-    <div class="divider"></div>
-
-    <!-- Recording Section -->
-    <div class="section">
-      <div class="section-title">📡 API Request Recording</div>
-      <div class="controls" style="margin-bottom: 8px;">
-        <button id="recordBtn" class="btn-success">🔴 Start Recording</button>
-        <button id="stopBtn" class="btn-danger" disabled>⏹️ Stop Recording</button>
-        <button id="generateBtn" class="btn-primary" disabled>🤖 Generate API Description</button>
-      </div>
-
-      <div id="stats" class="stats">
-        <span>📊 Stats</span>
-        <span class="badge" id="statsBadge">Ready</span>
-      </div>
-
-      <div id="logPreview"></div>
-
-      <div id="spinner" class="spinner-wrap">
-        <div class="spinner"></div>
-      </div>
+    <button id="generateBtn" class="generate-btn" disabled>🤖 Generate API Description</button>
+    <div id="spinner" style="display:none;">
+      <div class="spinner"></div>
     </div>
+  </div>
 
-    <div class="divider"></div>
+  <div class="divider"></div>
 
-    <!-- Visualization Section -->
-    <div class="section">
-      <div class="section-title">📊 AI Visualization</div>
-      <button id="injectBtn" class="btn-accent">✨ Add AI-Visualizer to current page</button>
-    </div>
+  <!-- Visualization Section -->
+  <div class="section">
+    <div class="section-title">📊 AI Visualization</div>
+    <button id="injectBtn">✨ Add AI-Visualizer to current page</button>
   </div>
 
   <!-- Schema modal -->

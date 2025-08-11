@@ -14,41 +14,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const statsDiv = document.getElementById('stats');
   const schemaContentDiv = document.getElementById('schemaContent') || logPreview;
   const aiSettingsDetails = document.getElementById('aiSettings');
-  const themeToggle = document.getElementById('themeToggle');
-  const statsBadge = document.getElementById('statsBadge');
 
   // Schema modal elements
   const schemaModal = document.getElementById('schemaModal');
   const schemaModalTitle = document.getElementById('schemaModalTitle');
   const schemaModalClose = document.getElementById('schemaModalClose');
   const schemaTree = document.getElementById('schemaTree');
-
-  function applyTheme(theme) {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-      themeToggle.checked = true;
-    } else {
-      root.removeAttribute('data-theme');
-      themeToggle.checked = false;
-    }
-  }
-
-  function saveTheme(theme) {
-    chrome.storage.local.set({ themePreference: theme });
-  }
-
-  function loadTheme() {
-    chrome.storage.local.get(['themePreference'], ({ themePreference }) => {
-      applyTheme(themePreference || 'light');
-    });
-  }
-
-  themeToggle?.addEventListener('change', () => {
-    const theme = themeToggle.checked ? 'dark' : 'light';
-    applyTheme(theme);
-    saveTheme(theme);
-  });
 
   function openSchemaModal(title, schema) {
     schemaModalTitle.textContent = title;
@@ -70,7 +41,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Load initial data
   function loadInitialData() {
-    loadTheme();
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const origin = tabs.length ? new URL(tabs[0].url || '').origin : null;
       chrome.storage.local.get([
@@ -145,15 +115,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  function isInjectableUrl(url) {
-    try {
-      const u = new URL(url);
-      return u.protocol === 'http:' || u.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }
-
   // Recording functionality
   recordBtn.addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -169,7 +130,6 @@ document.addEventListener('DOMContentLoaded', function () {
         stopBtn.disabled = false;
         generateBtn.disabled = true;
         logPreview.innerHTML = '<em>Recording… perform actions on the page.</em>';
-        statsBadge.textContent = 'Recording';
       });
     });
   });
@@ -179,9 +139,9 @@ document.addEventListener('DOMContentLoaded', function () {
       recordingActive = false;
       recordBtn.disabled = false;
       stopBtn.disabled = true;
-      statsBadge.textContent = 'Idle';
     });
   });
+
 
   // Helper function to make AI requests
   async function makeAIRequest(prompt, systemMessage, chatUrl, chatModel, apiKey) {
@@ -214,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Generate API description from captured log
   async function generateDescription() {
     console.log('Generating API description...');
-    spinner.style.display = 'flex';
+    spinner.style.display = 'block';
     const originalText = generateBtn.textContent;
     generateBtn.textContent = 'Analyzing URLs...';
     generateBtn.disabled = true;
@@ -399,34 +359,16 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
       chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         if (!tab) return;
         const tabId = tab.id;
-        const tabUrl = tab.url || '';
 
-        if (!isInjectableUrl(tabUrl)) {
-          alert('Cannot inject into this page. Open a normal website tab (http/https) and try again.');
-          return;
-        }
-
-        const init = () => chrome.tabs.sendMessage(tabId, { action: 'initVisualization' }, () => {
-          if (chrome.runtime.lastError) {
-            console.warn('Init failed:', chrome.runtime.lastError.message);
-            alert('Failed to initialize visualizer on this page.');
-          }
-        });
+        const init = () => chrome.tabs.sendMessage(tabId, { action: 'initVisualization' });
 
         // Try ping
         chrome.tabs.sendMessage(tabId, { ping: true }, () => {
           if (chrome.runtime.lastError) {
-            // No listener yet → inject and then init if success
+            // No listener yet → inject
             chrome.scripting.executeScript(
               { target: { tabId }, files: ['content.js'] },
-              () => {
-                if (chrome.runtime.lastError) {
-                  console.warn('Injection failed:', chrome.runtime.lastError.message);
-                  alert('Cannot inject into this page: ' + chrome.runtime.lastError.message);
-                  return;
-                }
-                init();
-              }
+              init // run init after injection
             );
           } else {
             // Listener exists
@@ -525,7 +467,6 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
       <strong>📊 Stats:</strong> 
       ${totalRequests} total unique endpoints from ${uniqueUrls} unique URLs
     `;
-    statsBadge.textContent = `${uniqueUrls} URLs`;
   }
 
   function displaySchemas(schemas) {
@@ -589,14 +530,13 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
         })();
         const safeKey = encodeURIComponent(key);
         return `
-          <div class="card">
-            <div class="url-item" data-key="${safeKey}" style="font-weight: 600; font-size: 10px; margin-bottom: 4px;">
+          <div style="border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; padding: 8px; background: white;">
+            <div class="url-item" data-key="${safeKey}" style="font-weight: bold; color: #0066cc; font-size: 10px; margin-bottom: 4px;">
               ${displayUrl}
             </div>
-            <div style="font-size: 10px; color: var(--subtext); display: flex; gap: 8px;">
+            <div style="font-size: 9px; color: #666;">
               <div>${schemaInfo}</div>
-              <div>• ${timestamp}</div>
-              <div>• ${count} request${count > 1 ? 's' : ''}</div>
+              <div>${timestamp} • ${count} request${count > 1 ? 's' : ''}</div>
             </div>
           </div>
         `;
@@ -682,9 +622,6 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
   // Listen for storage changes to update UI in real-time
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-      if (changes.themePreference) {
-        applyTheme(changes.themePreference.newValue || 'light');
-      }
       if (changes.recordingLog) {
         const entries = getDedupedEntries(changes.recordingLog.newValue || []);
         const hasData = entries.length > 0;
