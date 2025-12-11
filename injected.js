@@ -90,7 +90,12 @@
   }
 
   // Reapply patch if another script overwrites window.fetch
-  const fetchGuard = setInterval(() => {
+  // Optimized: Run frequently during initial page load, then slow down
+  let fetchGuardCheckCount = 0;
+  const maxFastChecks = 10; // Fast checks for first 5 seconds (10 * 500ms)
+  let fetchGuard = null;
+  
+  const checkFetch = () => {
     if (window.fetch && window.fetch !== window.__PATCHED_FETCH__) {
       console.log('⚠️ fetch was overwritten, re-applying interceptor');
       window.__ORIG_FETCH__ = window.fetch;
@@ -98,10 +103,24 @@
       window.__PATCHED_FETCH__ = patched;
       window.fetch = patched;
     }
-  }, 500);
+    
+    fetchGuardCheckCount++;
+    
+    // After initial fast checks, switch to slower interval
+    if (fetchGuardCheckCount === maxFastChecks && fetchGuard) {
+      clearInterval(fetchGuard);
+      // Switch to slower 3-second interval for ongoing protection
+      fetchGuard = setInterval(checkFetch, 3000);
+    }
+  };
+  
+  // Start with 500ms interval for fast initial protection
+  fetchGuard = setInterval(checkFetch, 500);
 
   // Ensure we clean up if the page unloads
-  window.addEventListener('beforeunload', () => clearInterval(fetchGuard));
+  window.addEventListener('beforeunload', () => {
+    if (fetchGuard) clearInterval(fetchGuard);
+  });
 
   // Enhanced XMLHttpRequest patching
   const origOpen = XMLHttpRequest.prototype.open;
@@ -117,10 +136,14 @@
 
   XMLHttpRequest.prototype.send = function (body) {
     this._interceptedBody = body;
+    this._interceptedSent = false; // Flag to prevent duplicate sends
     console.log('📡 XMLHttpRequest.send() called for:', this._interceptedUrl);
 
-    // Add multiple event listeners for better coverage
     const handleResponse = () => {
+      // Prevent duplicate sends
+      if (this._interceptedSent) return;
+      this._interceptedSent = true;
+
       console.log('📡 XMLHttpRequest response received:', {
         url: this._interceptedUrl,
         status: this.status,
@@ -196,16 +219,14 @@
       }
     };
 
-    // Add listeners for both load and readystatechange events
+    // Use only the load event to avoid duplicate sends
     this.addEventListener('load', handleResponse);
-    this.addEventListener('readystatechange', () => {
-      if (this.readyState === 4) {
-        // Small delay to ensure response is fully processed
-        setTimeout(handleResponse, 10);
-      }
-    });
 
     this.addEventListener('error', () => {
+      // Prevent duplicate sends on error
+      if (this._interceptedSent) return;
+      this._interceptedSent = true;
+
       console.log('📡 XMLHttpRequest error for:', this._interceptedUrl);
       sendToExtension({
         type: 'xhr',

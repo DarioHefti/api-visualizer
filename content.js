@@ -51,10 +51,15 @@ async function initVisualizer() {
   const { apiBase, jwtToken: rawToken, apiDescription } = site;
   const jwtToken = rawToken ? rawToken.replace(/^Bearer\s+/i, '') : undefined;
   
-  if (!jwtToken || !apiDescription || !chatUrl || !chatModel || !apiKey) {
-    console.warn('JWT token, API description, chat URL, or chat model missing.');
-    alert('Missing required configuration! Please:\n1. Record some API requests\n2. Generate API description\n3. Configure AI settings\n4. Try again');
+  if (!apiDescription || !chatUrl || !chatModel || !apiKey) {
+    console.warn('API description, chat URL, chat model, or API key missing.', { apiDescription: !!apiDescription, chatUrl: !!chatUrl, chatModel: !!chatModel, apiKey: !!apiKey });
+    alert('Missing required configuration! Please:\n1. Record some API requests\n2. Generate API description\n3. Configure AI settings (Chat URL, Model, and API Key)\n4. Try again');
     return;
+  }
+  
+  // Note: jwtToken is optional - some APIs are public or use different auth methods
+  if (!jwtToken) {
+    console.log('No JWT token found - API requests will be made without Authorization header');
   }
 
   // Create container element

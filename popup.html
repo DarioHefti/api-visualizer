@@ -413,7 +413,7 @@
   <div class="container">
     <div class="header">
       <div class="title">
-        <h1>🔍📊 API Data Visualizer</h1>
+        <h1>🔍📊 API Data Visualizer <span style="font-size: 10px; font-weight: normal; color: var(--muted); vertical-align: middle;">v1.1</span></h1>
         <div class="subtitle">Record API requests, generate schemas, and build AI dashboards</div>
       </div>
       <div class="header-actions">
@@ -440,7 +440,11 @@
         <label for="chatModel">Chat Model</label>
         <input type="text" id="chatModel" placeholder="gpt-4" />
 
-        <button id="saveBtn" class="btn-primary">Save Credentials</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="saveBtn" class="btn-primary">Save Credentials</button>
+          <button id="testAiBtn" class="btn-success">🔗 Test Connection</button>
+        </div>
+        <div id="testResult" style="margin-top: 8px; padding: 8px; border-radius: 6px; font-size: 11px; display: none;"></div>
       </div>
     </details>
 

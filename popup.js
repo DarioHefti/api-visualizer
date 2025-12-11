@@ -1,4 +1,17 @@
 document.addEventListener('DOMContentLoaded', function () {
+  // Helper function to safely get origin from URL (returns null for invalid/special URLs)
+  function safeGetOrigin(url) {
+    if (!url) return null;
+    try {
+      const u = new URL(url);
+      // Only allow http/https origins
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      return u.origin;
+    } catch {
+      return null;
+    }
+  }
+
   // Get all UI elements
   const chatUrlInput = document.getElementById('chatUrl');
   const chatModelInput = document.getElementById('chatModel');
@@ -16,6 +29,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const aiSettingsDetails = document.getElementById('aiSettings');
   const themeToggle = document.getElementById('themeToggle');
   const statsBadge = document.getElementById('statsBadge');
+  const testAiBtn = document.getElementById('testAiBtn');
+  const testResult = document.getElementById('testResult');
 
   // Schema modal elements
   const schemaModal = document.getElementById('schemaModal');
@@ -72,14 +87,14 @@ document.addEventListener('DOMContentLoaded', function () {
   function loadInitialData() {
     loadTheme();
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const origin = tabs.length ? new URL(tabs[0].url || '').origin : null;
+      const origin = tabs.length ? safeGetOrigin(tabs[0].url) : null;
       chrome.storage.local.get([
         'siteConfigs', 'chatUrl', 'chatModel', 'apiKey',
-        'recordingLog', 'recordingActive'
+        'recordingLog', 'recordingActive', 'recordingHeartbeat'
       ], (data) => {
         const {
           siteConfigs = {}, chatUrl, chatModel, apiKey,
-          recordingLog = [], recordingActive: recAct
+          recordingLog = [], recordingActive: recAct, recordingHeartbeat
         } = data;
 
         // Load AI settings
@@ -87,8 +102,24 @@ document.addEventListener('DOMContentLoaded', function () {
         if (chatModel) chatModelInput.value = chatModel;
         if (apiKey) apiKeyInput.value = apiKey;
 
+        // Check heartbeat - if recording is marked active but heartbeat is stale (>5s), reset state
+        let actuallyRecording = !!recAct;
+        if (actuallyRecording && recordingHeartbeat) {
+          const heartbeatAge = Date.now() - recordingHeartbeat;
+          if (heartbeatAge > 5000) {
+            console.warn('[Popup] Recording heartbeat is stale, resetting state');
+            actuallyRecording = false;
+            chrome.storage.local.set({ recordingActive: false, recordingHeartbeat: null });
+          }
+        } else if (actuallyRecording && !recordingHeartbeat) {
+          // Recording marked active but no heartbeat - likely stale state
+          console.warn('[Popup] Recording active but no heartbeat, resetting state');
+          actuallyRecording = false;
+          chrome.storage.local.set({ recordingActive: false });
+        }
+
         // Set recording state
-        recordingActive = !!recAct;
+        recordingActive = actuallyRecording;
         recordBtn.disabled = recordingActive;
         stopBtn.disabled = !recordingActive;
 
@@ -110,7 +141,11 @@ document.addEventListener('DOMContentLoaded', function () {
   saveBtn.addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs.length) return;
-      const origin = new URL(tabs[0].url || '').origin;
+      const origin = safeGetOrigin(tabs[0].url);
+      if (!origin) {
+        alert('Cannot save settings on this page. Open a normal website (http/https) first.');
+        return;
+      }
       chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
         const site = siteConfigs[origin] || {};
         siteConfigs[origin] = site;
@@ -127,11 +162,103 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  // Test AI connection
+  testAiBtn.addEventListener('click', async () => {
+    const chatUrl = chatUrlInput.value.trim();
+    const chatModel = chatModelInput.value.trim();
+    const apiKey = apiKeyInput.value.trim();
+
+    // Show testing state
+    testResult.style.display = 'block';
+    testResult.style.background = 'rgba(148, 163, 184, 0.15)';
+    testResult.style.color = 'var(--subtext)';
+    testResult.innerHTML = '⏳ Testing connection...';
+    testAiBtn.disabled = true;
+
+    // Validate inputs
+    if (!chatUrl) {
+      showTestResult('error', '❌ Chat URL is required');
+      return;
+    }
+    if (!chatModel) {
+      showTestResult('error', '❌ Chat Model is required');
+      return;
+    }
+    if (!apiKey) {
+      showTestResult('error', '❌ API Key is required');
+      return;
+    }
+
+    try {
+      const body = {
+        model: chatModel,
+        messages: [
+          { role: 'user', content: 'Respond with only: "OK"' }
+        ]
+      };
+
+      const res = await fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMsg = errorJson.error?.message || errorJson.message || errorMsg;
+        } catch {
+          if (errorText.length < 100) errorMsg = errorText;
+        }
+        showTestResult('error', `❌ Failed: ${errorMsg}`);
+        return;
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      
+      if (content) {
+        showTestResult('success', `✅ Connection successful! Model responded: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`);
+      } else {
+        showTestResult('warning', '⚠️ Connected but received unexpected response format');
+      }
+    } catch (err) {
+      showTestResult('error', `❌ Connection failed: ${err.message}`);
+    }
+  });
+
+  function showTestResult(type, message) {
+    testAiBtn.disabled = false;
+    testResult.style.display = 'block';
+    
+    if (type === 'success') {
+      testResult.style.background = 'rgba(34, 197, 94, 0.15)';
+      testResult.style.color = 'var(--success)';
+    } else if (type === 'error') {
+      testResult.style.background = 'rgba(239, 68, 68, 0.15)';
+      testResult.style.color = 'var(--danger)';
+    } else {
+      testResult.style.background = 'rgba(251, 191, 36, 0.15)';
+      testResult.style.color = '#f59e0b';
+    }
+    
+    testResult.innerHTML = message;
+  }
+
   // Helper to persist configuration
   function persistConfig(cb) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs.length) return;
-      const origin = new URL(tabs[0].url || '').origin;
+      const origin = safeGetOrigin(tabs[0].url);
+      if (!origin) {
+        if (cb) cb();
+        return;
+      }
       chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
         const site = siteConfigs[origin] || {};
         siteConfigs[origin] = site;
@@ -158,12 +285,26 @@ document.addEventListener('DOMContentLoaded', function () {
   recordBtn.addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (!tab) return;
-      const origin = new URL(tab.url || '').origin;
+      const origin = safeGetOrigin(tab.url);
+      if (!origin) {
+        alert('Cannot record on this page. Open a normal website (http/https) first.');
+        return;
+      }
       chrome.runtime.sendMessage({
         action: 'startRecording',
         origin,
         tabId: tab.id
-      }, () => {
+      }, (response) => {
+        if (response && response.ok === false) {
+          // Recording failed to start
+          alert(response.error || 'Failed to start recording.');
+          recordingActive = false;
+          recordBtn.disabled = false;
+          stopBtn.disabled = true;
+          statsBadge.textContent = 'Failed';
+          return;
+        }
+        // Recording started successfully
         recordingActive = true;
         recordBtn.disabled = true;
         stopBtn.disabled = false;
@@ -209,6 +350,73 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!content) throw new Error('Invalid AI response');
 
     return content;
+  }
+
+  // Robust JSON extraction from AI responses (handles markdown code fences, extra text, etc.)
+  function extractJsonFromAIResponse(text, expectedType = 'any') {
+    if (!text || typeof text !== 'string') {
+      throw new Error('Empty or invalid AI response');
+    }
+
+    let cleaned = text.trim();
+    
+    // Step 1: Try direct parse
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (validateJsonType(parsed, expectedType)) return parsed;
+    } catch { /* continue */ }
+
+    // Step 2: Strip markdown code fences (```json ... ``` or ``` ... ```)
+    const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (codeBlockMatch) {
+      try {
+        const parsed = JSON.parse(codeBlockMatch[1].trim());
+        if (validateJsonType(parsed, expectedType)) return parsed;
+      } catch { /* continue */ }
+    }
+
+    // Step 3: Extract JSON object or array using regex
+    // Look for outermost { } or [ ]
+    const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+    const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+    
+    // Prefer array if expectedType is array, otherwise try object first
+    const matches = expectedType === 'array' 
+      ? [arrayMatch, objectMatch] 
+      : [objectMatch, arrayMatch];
+    
+    for (const match of matches) {
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[0]);
+          if (validateJsonType(parsed, expectedType)) return parsed;
+        } catch { /* continue */ }
+      }
+    }
+
+    // Step 4: If still no luck, try to find any parseable JSON substring
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === '{' || cleaned[i] === '[') {
+        for (let j = cleaned.length; j > i; j--) {
+          try {
+            const substr = cleaned.substring(i, j);
+            const parsed = JSON.parse(substr);
+            if (validateJsonType(parsed, expectedType)) return parsed;
+          } catch { /* continue */ }
+        }
+      }
+    }
+
+    // Failed to extract JSON
+    const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
+    throw new Error(`Could not extract valid JSON from AI response. Response preview: ${preview}`);
+  }
+
+  function validateJsonType(data, expectedType) {
+    if (expectedType === 'any') return true;
+    if (expectedType === 'array') return Array.isArray(data);
+    if (expectedType === 'object') return data !== null && typeof data === 'object' && !Array.isArray(data);
+    return true;
   }
 
   // Generate API description from captured log
@@ -280,15 +488,18 @@ Consider data richness, visualization potential, and business value. Be selectiv
 
       console.log('AI selected interesting URLs:', interestingIndices);
 
-      // Parse the response to get the interesting URL indices
+      // Parse the response to get the interesting URL indices using robust extraction
       let selectedIndices;
       try {
-        selectedIndices = JSON.parse(interestingIndices.trim());
-        if (!Array.isArray(selectedIndices)) {
-          throw new Error('Response is not an array');
+        selectedIndices = extractJsonFromAIResponse(interestingIndices, 'array');
+        // Validate that it's an array of numbers
+        if (!selectedIndices.every(item => typeof item === 'number')) {
+          throw new Error('Response array contains non-numeric values');
         }
       } catch (e) {
-        console.warn('Failed to parse AI response, using all URLs:', e);
+        console.warn('Failed to parse AI response for URL selection:', e.message);
+        console.warn('Raw AI response:', interestingIndices);
+        // Fallback: use all URLs
         selectedIndices = deduped.map((_, i) => i + 1);
       }
 
@@ -342,20 +553,30 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
 
       console.log('Generated API description:', description);
 
-      // Post-process to enforce backend servers and path-only keys
+      // Post-process to enforce backend servers and path-only keys using robust extraction
       let finalDescription = description;
       try {
-        const parsed = JSON.parse(description);
+        const parsed = extractJsonFromAIResponse(description, 'object');
         const normalized = normalizeOpenApiSpec(parsed, interestingRequests);
         finalDescription = JSON.stringify(normalized, null, 2);
       } catch (e) {
-        console.warn('Failed to parse AI OpenAPI JSON; storing raw output', e);
+        console.warn('Failed to parse AI OpenAPI JSON:', e.message);
+        console.warn('Raw AI response:', description.substring(0, 500));
+        // Still store the raw output - user can try again
+        finalDescription = description;
       }
 
       // Save description to siteConfigs
       chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         if (!tab) return;
-        const origin = new URL(tab.url || '').origin;
+        const origin = safeGetOrigin(tab.url);
+        if (!origin) {
+          alert('Cannot save API description on this page.');
+          spinner.style.display = 'none';
+          generateBtn.textContent = originalText;
+          generateBtn.disabled = false;
+          return;
+        }
         chrome.storage.local.get(['siteConfigs', 'recordingLog'], ({ siteConfigs = {}, recordingLog = [] }) => {
           const site = siteConfigs[origin] || {};
           site.apiDescription = finalDescription;
@@ -521,10 +742,31 @@ Return a complete OpenAPI 3.0 JSON specification optimized for data visualizatio
     const uniqueUrls = new Set((schemas || []).map(s => s.canonicalKey || s.url)).size;
     const totalRequests = (schemas || []).length;
 
-    statsDiv.innerHTML = `
-      <strong>📊 Stats:</strong> 
-      ${totalRequests} total unique endpoints from ${uniqueUrls} unique URLs
-    `;
+    // Check storage usage
+    if (chrome.storage.local.getBytesInUse) {
+      chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
+        const quotaBytes = 5242880; // 5MB
+        const usageRatio = bytesInUse / quotaBytes;
+        const usagePercent = (usageRatio * 100).toFixed(0);
+        
+        let storageWarning = '';
+        if (usageRatio > 0.8) {
+          storageWarning = `<span style="color: var(--danger); font-weight: bold;"> ⚠️ Storage ${usagePercent}%</span>`;
+        } else if (usageRatio > 0.5) {
+          storageWarning = `<span style="color: var(--muted);"> 💾 ${usagePercent}%</span>`;
+        }
+        
+        statsDiv.innerHTML = `
+          <strong>📊 Stats:</strong> 
+          ${totalRequests} endpoints from ${uniqueUrls} URLs${storageWarning}
+        `;
+      });
+    } else {
+      statsDiv.innerHTML = `
+        <strong>📊 Stats:</strong> 
+        ${totalRequests} total unique endpoints from ${uniqueUrls} unique URLs
+      `;
+    }
     statsBadge.textContent = `${uniqueUrls} URLs`;
   }
 
