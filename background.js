@@ -231,44 +231,57 @@ function jsonToSchema(json) {
 
 // ===== END EMBEDDED SCHEMA GENERATOR LIBRARY =====
 
-// ===== Simplified JSON Schema Generator =====
-function _getType(val) {
-  if (val === null) return 'null';
-  if (Array.isArray(val)) return 'array';
-  return typeof val; // 'string', 'number', 'boolean', 'object', 'undefined'
-}
-
-function jsonToSchema(data) {
-  const t = _getType(data);
-  if (t === 'object') {
-    const properties = {};
-    for (const key in data) {
-      properties[key] = jsonToSchema(data[key]);
-    }
-    return { type: 'object', properties };
-  }
-  if (t === 'array') {
-    if (data.length === 0) {
-      return { type: 'array', items: {} };
-    }
-    const first = data[0];
-    const itemType = _getType(first);
-    if (itemType === 'object') {
-      return { type: 'array', items: jsonToSchema(first) };
-    }
-    return { type: 'array', items: { type: itemType } };
-  }
-  // primitives: string, number, boolean, null, undefined
-  return { type: t };
-}
-// ===== End Simplified JSON Schema Generator =====
-
 // ===== RECORDING FUNCTIONALITY (from good-vizualization) =====
 let isRecording = false;
 let recordingOrigin = '';
 let recordingLog = [];
 let debuggerTabId = null;
 let pendingRequests = new Map();
+let heartbeatInterval = null;
+
+// Heartbeat mechanism to keep recording state in sync
+function startHeartbeat() {
+  stopHeartbeat(); // Clear any existing interval
+  updateHeartbeat(); // Immediate update
+  heartbeatInterval = setInterval(updateHeartbeat, 2000); // Update every 2 seconds
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  // Clear heartbeat timestamp when stopping
+  chrome.storage.local.set({ recordingHeartbeat: null });
+}
+
+function updateHeartbeat() {
+  if (isRecording) {
+    chrome.storage.local.set({ recordingHeartbeat: Date.now() });
+  }
+}
+
+// Reset recording state on browser startup/extension load
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[Recorder] Browser started, resetting recording state');
+  isRecording = false;
+  debuggerTabId = null;
+  chrome.storage.local.set({ 
+    recordingActive: false, 
+    recordingHeartbeat: null 
+  });
+});
+
+// Also reset on extension install/update
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[Recorder] Extension installed/updated, resetting recording state');
+  isRecording = false;
+  debuggerTabId = null;
+  chrome.storage.local.set({ 
+    recordingActive: false, 
+    recordingHeartbeat: null 
+  });
+});
 
 // ===== Common filter helper =====
 function shouldTrack(details, { requireResponse = false, requireJsonHeader = false } = {}) {
@@ -291,10 +304,47 @@ function shouldTrack(details, { requireResponse = false, requireJsonHeader = fal
 }
 
 
-// Helper to persist the log
+// Storage quota management constants
+const MAX_RECORDING_LOG_ENTRIES = 100;
+const STORAGE_WARNING_THRESHOLD = 0.8; // 80% of quota
+
+// Helper to persist the log with quota management
 function persistLog() {
-  console.log(recordingLog);
-  chrome.storage.local.set({ recordingLog });
+  // Trim oldest entries if exceeding limit
+  if (recordingLog.length > MAX_RECORDING_LOG_ENTRIES) {
+    const excess = recordingLog.length - MAX_RECORDING_LOG_ENTRIES;
+    recordingLog.splice(0, excess);
+    console.log(`[Storage] Trimmed ${excess} oldest entries to stay under limit`);
+  }
+  
+  console.log(`[Storage] Persisting ${recordingLog.length} entries`);
+  chrome.storage.local.set({ recordingLog }, () => {
+    // Check storage usage after write
+    checkStorageQuota();
+  });
+}
+
+// Check storage quota and warn if approaching limit
+function checkStorageQuota() {
+  if (chrome.storage.local.getBytesInUse) {
+    chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
+      // chrome.storage.local has a 5MB limit (5242880 bytes)
+      const quotaBytes = 5242880;
+      const usageRatio = bytesInUse / quotaBytes;
+      
+      if (usageRatio > STORAGE_WARNING_THRESHOLD) {
+        console.warn(`[Storage] Warning: Storage usage at ${(usageRatio * 100).toFixed(1)}% (${(bytesInUse / 1024).toFixed(1)}KB / 5MB)`);
+        
+        // If very high, aggressively trim the recording log
+        if (usageRatio > 0.95 && recordingLog.length > 10) {
+          const trimCount = Math.floor(recordingLog.length / 2);
+          recordingLog.splice(0, trimCount);
+          console.warn(`[Storage] Emergency trim: removed ${trimCount} entries to free space`);
+          chrome.storage.local.set({ recordingLog });
+        }
+      }
+    });
+  }
 }
 
 // ===== SCHEMA TRACKING FUNCTIONALITY (from good-request-tracking) =====
@@ -400,14 +450,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Handle recording control messages
   switch (msg.action) {
     case 'startRecording': {
-      isRecording = true;
       recordingOrigin = msg.origin;
       recordingLog = [];
       pendingRequests.clear();
       debuggerTabId = msg.tabId;
-      chrome.storage.local.set({ recordingActive: true, recordingLog: [] });
-      persistLog();
-      console.log('[Recorder] Started for origin', recordingOrigin);
+      console.log('[Recorder] Starting for origin', recordingOrigin);
       
       // Inject fetch/XHR interceptor into the page when recording starts
       chrome.scripting.executeScript({
@@ -423,9 +470,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Attach debugger to capture response bodies
       chrome.debugger.attach({ tabId: debuggerTabId }, "1.3", () => {
         if (chrome.runtime.lastError) {
-          console.error('[Recorder] Failed to attach debugger:', chrome.runtime.lastError.message);
+          const errorMsg = chrome.runtime.lastError.message;
+          console.error('[Recorder] Failed to attach debugger:', errorMsg);
+          
+          // Reset recording state on failure
+          isRecording = false;
+          debuggerTabId = null;
+          chrome.storage.local.set({ recordingActive: false, recordingLog: [] });
+          
+          // Determine user-friendly error message
+          let userMessage = 'Failed to start recording.';
+          if (errorMsg.includes('Another debugger')) {
+            userMessage = 'Cannot start recording while DevTools is open. Please close DevTools and try again.';
+          } else if (errorMsg.includes('Cannot access')) {
+            userMessage = 'Cannot record on this page. Try a different website.';
+          } else {
+            userMessage = `Recording failed: ${errorMsg}`;
+          }
+          
+          sendResponse({ ok: false, error: userMessage });
         } else {
           console.log('[Recorder] Debugger attached');
+          
+          // Now set recording as active since debugger attached successfully
+          isRecording = true;
+          chrome.storage.local.set({ recordingActive: true, recordingLog: [] });
+          persistLog();
+          startHeartbeat(); // Start heartbeat to keep state in sync
+          
           chrome.debugger.sendCommand({ tabId: debuggerTabId }, "Runtime.enable", {}, () => {
             console.log('[Recorder] Runtime domain enabled');
           });
@@ -441,15 +513,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               chrome.debugger.sendCommand({ tabId: debuggerTabId }, "Network.setCacheDisabled", { cacheDisabled: true });
             }
           });
+          
+          sendResponse({ ok: true });
         }
       });
       
-      sendResponse({ ok: true });
       break;
     }
     
     case 'stopRecording': {
       isRecording = false;
+      stopHeartbeat(); // Stop heartbeat
       
       // Detach debugger
       if (debuggerTabId) {
@@ -508,175 +582,38 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
 
 // Capture completed requests during recording
+// Note: Response body capture happens through the injected script interceptors
+// This listener just logs completed requests for debugging
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log(`[Recorder] <- ${details.statusCode} ${details.url}`);
     if (!shouldTrack(details, { requireResponse: true, requireJsonHeader: true })) return;
 
-    
-    // Ensure there's an entry for this request
-    let idx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET');
-    if (idx === -1) {
-      recordingLog.push({ url: details.url, method: details.method, response: '(pending...)' });
-      idx = recordingLog.length - 1;
+    // Check if we already have a schema for this request (captured by interceptors)
+    const existingIdx = recordingLog.findIndex(e => e.url === details.url && e.method === 'GET');
+    if (existingIdx !== -1 && recordingLog[existingIdx].response && 
+        typeof recordingLog[existingIdx].response === 'object') {
+      // Already have schema from interceptor, no action needed
+      console.log('[Recorder] Schema already captured via interceptor:', details.url);
+      return;
     }
-
-    console.log('[Recorder] Fetching response body (fallback)');
-
-    chrome.storage.local.get(['siteConfigs'], ({ siteConfigs = {} }) => {
-      const site = siteConfigs[recordingOrigin] || {};
-      const authToken = site.jwtToken || '';
-
-      fetch(details.url, {
-        method: 'GET',
-        headers: {
-          ...(authToken ? { 'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
-          'Content-Type': 'application/json'
-        }
-      }).then(response => response.json())
-        .then(data => {
-          console.log('[Recorder] Response captured, generating schema:' + details.url);
-          const schema = jsonToSchema(data);
-          recordingLog[idx].response = schema;
-          persistLog();
-        })
-        .catch(err => {
-          console.error('[Recorder] Fallback fetch failed:', err.message);
-          recordingLog[idx].response = '(fallback fetch failed: ' + err.message + ')';
-          persistLog();
-        });
-    });
+    
+    // If no entry exists yet, create a placeholder
+    // The actual schema will be filled in by the intercepted fetch/XHR response
+    if (existingIdx === -1) {
+      recordingLog.push({ 
+        url: details.url, 
+        method: details.method, 
+        response: '(awaiting interceptor data)',
+        timestamp: new Date().toISOString()
+      });
+      persistLog();
+      console.log('[Recorder] Created placeholder entry for:', details.url);
+    }
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
 );
-
-// General network monitoring for schema generation
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    if (!details.url.startsWith('http')) return;
-    // Log general network requests for schema tracking
-    console.log(`🌍 Network request completed: ${details.method} ${details.url} (${details.statusCode})`);
-  },
-  { urls: ['<all_urls>'] }
-);
-
-// Enhanced webRequest response body capture for schema generation
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    // Only for http/https and not extension resources
-    if (!details.url.startsWith('http') || details.url.includes('extension://')) return;
-    
-    // Skip certain resource types that won't have JSON responses
-    const skipTypes = ['image', 'media', 'font', 'stylesheet', 'websocket', 'other'];
-    if (skipTypes.includes(details.type)) return;
-    
-    // Skip very large requests to avoid memory issues
-    if (details.requestBody && details.requestBody.raw) {
-      const totalSize = details.requestBody.raw.reduce((sum, part) => sum + (part.bytes?.byteLength || 0), 0);
-      if (totalSize > 10 * 1024 * 1024) return; // Skip > 10MB
-    }
-    
-    let filter;
-    try {
-      filter = chrome.webRequest.filterResponseData(details.requestId);
-    } catch (error) {
-      console.log(`⚠️ Cannot create filter for ${details.url}: ${error.message}`);
-      return;
-    }
-    
-    const chunks = [];
-    let totalSize = 0;
-    const maxSize = 5 * 1024 * 1024; // 5MB limit
-    let hasError = false;
-    
-    filter.ondata = (event) => {
-      try {
-        totalSize += event.data.byteLength;
-        if (totalSize > maxSize) {
-          filter.write(event.data);
-          filter.disconnect();
-          return;
-        }
-        
-        chunks.push(new Uint8Array(event.data));
-        filter.write(event.data);
-      } catch (error) {
-        console.warn(`❌ Error in ondata for ${details.url}:`, error);
-        hasError = true;
-        filter.write(event.data);
-      }
-    };
-    
-    filter.onerror = (event) => {
-      console.warn(`❌ Filter error for ${details.url}:`, event);
-      hasError = true;
-    };
-    
-    filter.onend = () => {
-      try {
-        filter.disconnect();
-        
-        if (hasError || chunks.length === 0) return;
-        
-        const responseBody = arrayBufferToString(chunks);
-        
-        // Try to parse as JSON for schema generation
-        if (responseBody.trim()) {
-          try {
-            const jsonData = JSON.parse(responseBody);
-            const schema = jsonToSchema(jsonData);
-            console.log(`✅ WebRequest schema generated for ${details.url}`);
-            addSchemaEntry(details.url, schema);
-          } catch (parseError) {
-            // Try to detect other structured formats
-            if (responseBody.trim().startsWith('<') && responseBody.includes('>')) {
-              const schema = {
-                type: 'xml_or_html',
-                length: responseBody.length,
-                source: 'webRequest',
-                rootElement: responseBody.match(/<([^>\s/]+)/)?.[1] || 'unknown'
-              };
-              addSchemaEntry(details.url, schema);
-            } else if (responseBody.length < 1000) {
-              const schema = {
-                type: 'text',
-                length: responseBody.length,
-                source: 'webRequest',
-                preview: responseBody.substring(0, 200)
-              };
-              addSchemaEntry(details.url, schema);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`❌ Error processing webRequest response for ${details.url}:`, error);
-      }
-    };
-  },
-  { urls: ['<all_urls>'] }
-);
-
-function arrayBufferToString(chunks) {
-  let totalLength = 0;
-  for (const chunk of chunks) {
-    totalLength += chunk.byteLength;
-  }
-  
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  
-  try {
-    return new TextDecoder('utf-8').decode(merged);
-  } catch (error) {
-    console.warn('Failed to decode as UTF-8, trying latin1');
-    return new TextDecoder('latin1').decode(merged);
-  }
-}
 
 // Chrome DevTools Protocol debugger events
 chrome.debugger.onEvent.addListener((source, method, params) => {

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "API Data Visualizer",
   "description": "Record API requests, generate schemas, create AI descriptions, and visualize with AI-powered dashboards",
-  "version": "1.0",
+  "version": "1.1",
   "permissions": [
     "scripting",
     "webRequest", 
